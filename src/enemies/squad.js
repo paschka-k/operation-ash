@@ -4,7 +4,7 @@
 // player is doing, difficulty rises through three tiers.
 
 import * as THREE from 'three';
-import { stepBody, raycast, clamp, damp } from '../core/collision.js';
+import { stepBody, standingHeight, raycast, clamp, damp } from '../core/collision.js';
 import { createEnemy, thinkEnemy, enemyHurt, hearNoise, alertNearby, ENEMY_TYPES, enemyParams, botHitChance } from '../core/ai.js';
 import { applyDamage, rayTargets } from '../core/combat.js';
 import { waveComposition, waveTier } from '../core/rules.js';
@@ -147,6 +147,7 @@ class Enemy {
     for (const m of Object.values(mats(core.type))) game.gr.prepareMaterial(m);
     this.model.root.position.set(core.x, 0, core.z);
     game.gr.scene.add(this.model.root);
+    game.gr.addNoAO(this.model.root); // dozens of small moving parts: not worth a second pass for ambient occlusion
     this.walkPhase = rnd() * 6;
     this.deathT = 0;
     this.deathDir = rnd() < 0.7 ? -1 : 1;
@@ -368,6 +369,8 @@ export class Enemies {
   spawn(type, x, z, tier = 1, opts = {}) {
     const core = createEnemy({ x, z, type, ...opts }, tier, rnd);
     const e = new Enemy(this.game, core);
+    // stand on whatever low thing is there (rubble spill, pallets), never inside it
+    core.y = standingHeight(core.x, core.z, core.radius, this.game.world.colliders);
     this.list.push(e);
     this.cores.push(core);
     return e;
@@ -409,6 +412,7 @@ export class Enemies {
       e.update(dt, world, now);
       if (e.remove) {
         this.game.gr.scene.remove(e.model.root);
+        this.game.gr.removeNoAO(e.model.root);
         this.list.splice(i, 1);
         const k = this.cores.indexOf(e.core);
         if (k >= 0) this.cores.splice(k, 1);
@@ -426,7 +430,7 @@ export class Enemies {
   }
 
   clear() {
-    for (const e of this.list) this.game.gr.scene.remove(e.model.root);
+    for (const e of this.list) { this.game.gr.scene.remove(e.model.root); this.game.gr.removeNoAO(e.model.root); }
     this.list.length = 0;
     this.cores.length = 0;
   }

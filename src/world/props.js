@@ -32,12 +32,21 @@ export class Props {
     const red = new THREE.MeshStandardMaterial({ color: 0xd22a22, roughness: 0.5, emissive: 0x551008, emissiveIntensity: 0.6 });
     const olive = new THREE.MeshStandardMaterial({ color: 0x59633c, roughness: 0.7, metalness: 0.2 });
     const yellow = new THREE.MeshStandardMaterial({ color: 0xd6b020, roughness: 0.6, emissive: 0x443300, emissiveIntensity: 0.5 });
-    const beamHealth = new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
-    const beamAmmo = new THREE.MeshBasicMaterial({ color: 0xffc94a, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    // the light column fades out upwards: a gradient in the alpha of a tiny texture
+    const fadeCanvas = document.createElement('canvas');
+    fadeCanvas.width = 4; fadeCanvas.height = 64;
+    const fg = fadeCanvas.getContext('2d');
+    const grad = fg.createLinearGradient(0, 64, 0, 0);
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.35, 'rgba(255,255,255,0.45)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    fg.fillStyle = grad; fg.fillRect(0, 0, 4, 64);
+    const fade = new THREE.CanvasTexture(fadeCanvas);
+    const beam = (color) => new THREE.MeshBasicMaterial({ color, map: fade, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const beamHealth = beam(0xff5a4a);
+    const beamAmmo = beam(0xffc94a);
     this.pickupMats = { white, red, olive, yellow, beamHealth, beamAmmo };
     for (const m of [white, red, olive, yellow]) this.game.gr.prepareMaterial(m);
-    this.beamGeo = new THREE.CylinderGeometry(0.28, 0.28, 2.2, 16, 1, true);
-    this.beamGeo.translate(0, 1.1, 0);
+    this.beamGeo = new THREE.CylinderGeometry(0.17, 0.17, 2.8, 16, 1, true);
+    this.beamGeo.translate(0, 1.4, 0);
   }
 
   /** Is there room for a prop of radius r at x,z? */
@@ -269,7 +278,7 @@ export class Props {
     const cam = this.game.gr.camera;
     // when the player is completely out of ammo, ammo boxes glow brighter
     const out = this.game.weapons.totalAmmo() === 0;
-    this.pickupMats.beamAmmo.opacity = out ? 0.2 + 0.14 * Math.sin(this.time * 6) : 0.1;
+    this.pickupMats.beamAmmo.opacity = out ? 0.3 + 0.16 * Math.sin(this.time * 6) : 0.14;
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const p = this.pickups[i];
       const t = this.time + p.t0;
@@ -298,8 +307,11 @@ export class Props {
   /** Remove everything dynamic. world._places() recreates it. */
   clear() {
     // removeCollider is safe to call twice, and a barrel waiting for its chain explosion is already not alive
-    for (const c of this.crates) { this.world.removeCollider(c.box); this.root.remove(c.mesh); }
-    for (const b of this.barrels) { this.world.removeCollider(b.box); this.root.remove(b.mesh); }
+    // Geometry is freed too: primitive crates and barrels build their own. A shared glTF geometry
+    // is simply uploaded again the next time it is drawn.
+    const free = (mesh) => mesh.traverse((o) => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+    for (const c of this.crates) { this.world.removeCollider(c.box); this.root.remove(c.mesh); free(c.mesh); }
+    for (const b of this.barrels) { this.world.removeCollider(b.box); this.root.remove(b.mesh); free(b.mesh); }
     for (const p of this.pickups) this._dropPickup(p);
     this.crates.length = 0; this.barrels.length = 0; this.pickups.length = 0; this.timers.length = 0;
   }

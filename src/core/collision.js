@@ -130,13 +130,15 @@ function resolveHorizontal(body, colliders, axis, vel, stepHeight) {
     if (!c.solid) continue;
     if (!bodyOverlaps(body, c)) continue;
 
-    // Can we simply step onto it?
+    // Can we simply step onto it? The ledge may be a stack of low steps (rubble, pallets) that
+    // the body touches at the same time, so stand on the highest top that is still within reach.
     const rise = c.maxY - body.y;
     if (body.onGround && rise > 0 && rise <= stepHeight) {
       const saved = body.y;
-      body.y = c.maxY + EPS;
-      if (!overlapsAny(body, colliders, c)) {
-        body.y = c.maxY;
+      const top = reachableTop(body, colliders, c.maxY, saved + stepHeight);
+      body.y = top + EPS;
+      if (!overlapsAny(body, colliders)) {
+        body.y = top;
         body.vy = 0;
         continue;
       }
@@ -155,6 +157,33 @@ function resolveHorizontal(body, colliders, axis, vel, stepHeight) {
       body.vz = 0;
     }
   }
+}
+
+/** Highest box top between `from` and `limit` under the body's footprint. */
+function reachableTop(body, colliders, from, limit) {
+  let top = from;
+  for (let i = 0; i < colliders.length; i++) {
+    const d = colliders[i];
+    if (!d.solid || d.maxY <= top || d.maxY > limit + EPS) continue;
+    if (body.x + body.radius > d.minX + EPS && body.x - body.radius < d.maxX - EPS &&
+        body.z + body.radius > d.minZ + EPS && body.z - body.radius < d.maxZ - EPS) top = d.maxY;
+  }
+  return top;
+}
+
+/**
+ * Height to stand at for a body placed at (x, z): the top of the highest low box under it
+ * (up to `maxStep` above the ground), or the ground. Use it when spawning or teleporting, so
+ * nothing ever starts inside a pallet stack or a spill of rubble.
+ */
+export function standingHeight(x, z, radius, colliders, maxStep = 0.6, ground = 0) {
+  let y = ground;
+  for (let i = 0; i < colliders.length; i++) {
+    const d = colliders[i];
+    if (!d.solid || d.minY > ground + EPS || d.maxY <= y || d.maxY > ground + maxStep) continue;
+    if (x + radius > d.minX + EPS && x - radius < d.maxX - EPS && z + radius > d.minZ + EPS && z - radius < d.maxZ - EPS) y = d.maxY;
+  }
+  return y;
 }
 
 function pushOutDir(p, lo, hi) {

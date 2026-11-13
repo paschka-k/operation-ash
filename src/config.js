@@ -7,9 +7,9 @@ export { PLAYER } from './core/rules.js';
 // Three presets. The sun and three shadow cascades exist on all of them, only the
 // shadow map size, ambient occlusion, render scale, particles and lens effects change.
 export const QUALITY = {
-  low:    { label: 'low',    renderScale: 0.75, shadow: 1024, ao: false, aoScale: 0,   bloom: false, smaa: true, msaa: 0, particles: 0.25, aniso: 4,  ca: 0,     shadowType: 'pcf' },
-  medium: { label: 'medium', renderScale: 1.0,  shadow: 2048, ao: true,  aoScale: 0.5, bloom: true,  smaa: true, msaa: 0, particles: 0.6,  aniso: 8,  ca: 0,     shadowType: 'pcf' },
-  high:   { label: 'high',   renderScale: 1.0,  shadow: 4096, ao: true,  aoScale: 1,   bloom: true,  smaa: true, msaa: 4, particles: 1.0,  aniso: 16, ca: 0.012, shadowType: 'pcf' },
+  low:    { label: 'low',    renderScale: 0.75, shadow: 1024, ao: false, aoScale: 0,   bloom: false, smaa: true, msaa: 0, particles: 0.25, aniso: 4,  ca: 0,     shadowType: 'pcf', rays: 0,  raysStrength: 0 },
+  medium: { label: 'medium', renderScale: 1.0,  shadow: 2048, ao: true,  aoScale: 0.5, bloom: true,  smaa: true, msaa: 0, particles: 0.6,  aniso: 8,  ca: 0,     shadowType: 'pcf', rays: 8,  raysStrength: 0.5 },
+  high:   { label: 'high',   renderScale: 1.0,  shadow: 4096, ao: true,  aoScale: 1,   bloom: true,  smaa: true, msaa: 4, particles: 1.0,  aniso: 16, ca: 0.012, shadowType: 'pcf', rays: 20, raysStrength: 0.55 },
 };
 export const QUALITY_ORDER = ['low', 'medium', 'high'];
 

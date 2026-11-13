@@ -33,7 +33,7 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
 | Модуль | Что отдаёт | Заметки |
 |--------|-----------|---------|
 | `math` | `vec3`, `v3`, `clamp`, `lerp`, `damp`, `angleDiff`, `createRng(seed)`, `randomCone` | `createRng` возвращает функцию с `.range`, `.int`, `.pick` |
-| `collision` | `makeBox`, `stepBody`, `moveBody`, `raycast`, `rayBox`, `lineOfSight`, `raySphere`, `rayVerticalCylinder` | AABB с полями `solid`, `blocksBullets`, `navIgnore`, `kind` |
+| `collision` | `makeBox`, `stepBody`, `moveBody`, `standingHeight`, `raycast`, `rayBox`, `lineOfSight`, `raySphere`, `rayVerticalCylinder` | AABB с полями `solid`, `blocksBullets`, `navIgnore`, `kind` |
 | `nav` | `NavGrid(half, cell, margin)`: `addBox`, `removeBox`, `blockedAt`, `walkable`, `findPath`, `reachableFrom`, `nearestFree` | в игре клетка 0.5 м и поле 0.4 м, чтобы двери 2 м оставались проходимыми |
 | `cover` | `generateCoverPoints`, `indexCover`, `findCover` | точки на расстояниях 0.9, 1.25, 1.7 м от стены |
 | `rules` | `PLAYER`, `WEAPON_SPECS`, `ENEMY_TYPES`, `TIERS`, `waveCount`, `waveTier`, `maxAlive`, `waveComposition`, `effectiveSpread`, `damageAtRange`, `botHitChance`, `killScore`, `explosionDamage`, `regenHealth`, `applyMedkit`, `applyAmmoPickup` | единственное место чисел баланса |

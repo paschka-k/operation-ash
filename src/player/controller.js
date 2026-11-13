@@ -2,7 +2,7 @@
 // camera effects (bob, lean, landing dip, recoil, shake) and health.
 
 import * as THREE from 'three';
-import { stepBody, overlapsAny, clamp, damp, lerp } from '../core/collision.js';
+import { stepBody, standingHeight, overlapsAny, clamp, damp, lerp } from '../core/collision.js';
 import { PLAYER, MAP_HALF } from '../config.js';
 import { moveSpeed } from '../core/rules.js';
 import { damagePlayer } from '../core/waves.js';
@@ -61,7 +61,12 @@ export class Player {
   get grounded() { return this.pos.onGround; }
   get speed() { return Math.hypot(this.pos.vx, this.pos.vz); }
   get aim() { return this.forward; }
-  teleport(p) { this.pos.x = p.x; this.pos.y = p.y ?? 0; this.pos.z = p.z; this.pos.vx = this.pos.vy = this.pos.vz = 0; }
+  /** Put the player somewhere. Without a height the player stands on whatever low thing is there. */
+  teleport(p) {
+    this.pos.x = p.x; this.pos.z = p.z;
+    this.pos.y = p.y ?? standingHeight(p.x, p.z, this.pos.radius, this.game.world.colliders);
+    this.pos.vx = this.pos.vy = this.pos.vz = 0;
+  }
 
   // The health lives in the game state (core/waves) together with the score.
   get health() { return this.game.director.core.player.health; }

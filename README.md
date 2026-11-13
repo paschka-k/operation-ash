@@ -4,7 +4,9 @@ A first-person shooter in the style of Call of Duty, set in a ruined city block.
 
 **Play online: https://paschka-k.github.io/operation-ash/**
 
-![in game](.autopilot/final-screenshot.jpg)
+![a street in the block](.autopilot/screenshot-alley.jpg)
+
+![the interface in a fight](.autopilot/final-screenshot.jpg)
 
 ## Play
 
@@ -40,7 +42,7 @@ Rebuild the single file with `npm run build`.
 
 ## Graphics, honestly
 
-Unreal Engine 5 quality (Nanite, Lumen, scanned assets everywhere) is not reachable in a browser. This game gets as far as WebGL allows: PBR materials with albedo, normal and AO/roughness/metal maps, sky with image based lighting, three-cascade sun shadows, GTAO ambient occlusion, bloom, SMAA, filmic tone mapping, fog, film grain. All textures and models are generated in code, so the result looks like a good stylized PBR game, not a photograph.
+Unreal Engine 5 quality (Nanite, Lumen, scanned assets everywhere) is not reachable in a browser. This game gets as far as WebGL allows: PBR materials with albedo, normal and AO/roughness/metal maps, sky with image based lighting, three-cascade sun shadows, GTAO ambient occlusion, bloom, SMAA, filmic tone mapping, fog, film grain. Light shafts from the low sun, world-space colour variation that hides texture tiling, rain streaks and patches of exposed brick add to it. All textures and models are generated in code, so the result looks like a good stylized PBR game, not a photograph.
 
 The biggest remaining step is real photoscans. The pipeline for them is built and tested with procedural fallbacks, but the files are not downloaded yet (see below).
 

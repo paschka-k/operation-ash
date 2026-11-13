@@ -142,10 +142,10 @@ const SHADERS = {
       const p = vnoise(u * 160, v * 160, 160, 160, seed + 2);
       const pore = p > 0.8 ? (p - 0.8) / 0.2 : 0;
       const streak = fbm(u, v, 10, 2, 3, seed + 4);
-      const stain = smooth(0.52, 0.78, streak) * (0.5 + 0.5 * fbm(u, v, 2, 3, 3, seed + 5));
+      const stain = smooth(0.52, 0.78, streak) * (0.5 + 0.5 * fbm(u, v, 2, 3, 3, seed + 5)) * 0.45;
       const ridge = 1 - Math.abs(2 * fbm(u, v, 5, 5, 3, seed + 3) - 1);
-      const crack = smooth(0.988, 0.9985, ridge);
-      const g = 0.50 + (n1 - 0.5) * 0.26 + (n2 - 0.5) * 0.12 - stain * 0.16 - pore * 0.2 - crack * 0.38;
+      const crack = smooth(0.988, 0.9985, ridge) * smooth(0.5, 0.68, fbm(u, v, 2, 2, 2, seed + 7));
+      const g = 0.50 + (n1 - 0.5) * 0.15 + (n2 - 0.5) * 0.12 - stain * 0.16 - pore * 0.2 - crack * 0.38;
       o.r = g * 1.02; o.g = g; o.b = g * 0.95;
       o.h = n2 * 0.5 + n1 * 0.35 - pore * 0.55 - crack * 0.9;
       o.rough = 0.84 + (n2 - 0.5) * 0.22 + pore * 0.1 - stain * 0.08;
@@ -157,21 +157,21 @@ const SHADERS = {
     return (u, v, o) => {
       const n1 = fbm(u, v, 3, 3, 5, seed);
       const n2 = fbm(u, v, 20, 20, 3, seed + 1);
-      const chipMask = smooth(0.68, 0.74, fbm(u, v, 3, 3, 4, seed + 2));
+      const chipMask = smooth(0.8, 0.86, fbm(u, v, 11, 11, 3, seed + 2));
       const streak = fbm(u, v, 8, 2, 3, seed + 4);
-      const stain = smooth(0.5, 0.8, streak);
+      const stain = smooth(0.5, 0.8, streak) * 0.4;
       const ridge = 1 - Math.abs(2 * fbm(u, v, 4, 4, 3, seed + 3) - 1);
-      const crack = smooth(0.985, 0.998, ridge);
+      const crack = smooth(0.992, 0.9995, ridge) * smooth(0.55, 0.72, fbm(u, v, 2, 2, 2, seed + 7));
       // plaster layer
-      let r = 0.70 + (n1 - 0.5) * 0.14 - stain * 0.2;
-      let g = 0.66 + (n1 - 0.5) * 0.14 - stain * 0.2;
-      let b = 0.58 + (n1 - 0.5) * 0.12 - stain * 0.18;
+      let r = 0.70 + (n1 - 0.5) * 0.08 - stain * 0.2;
+      let g = 0.66 + (n1 - 0.5) * 0.08 - stain * 0.2;
+      let b = 0.58 + (n1 - 0.5) * 0.07 - stain * 0.18;
       // exposed masonry below
       const m = 0.33 + n2 * 0.18;
       r = mix(r, m * 1.05, chipMask);
       g = mix(g, m * 0.82, chipMask);
       b = mix(b, m * 0.74, chipMask);
-      const dark = crack * 0.4;
+      const dark = crack * 0.24;
       o.r = r - dark; o.g = g - dark; o.b = b - dark;
       o.h = mix(0.55 + n2 * 0.12, 0.2 + n2 * 0.35, chipMask) - crack * 0.7;
       o.rough = mix(0.88, 0.96, chipMask);
@@ -180,7 +180,7 @@ const SHADERS = {
   },
 
   brick(seed) {
-    const ROWS = 8, COLS = 4;
+    const ROWS = 16, COLS = 8; // a 2 m by 1.2 m tile: 128 different bricks before the pattern repeats
     return (u, v, o) => {
       const row = Math.floor(v * ROWS);
       const fy = v * ROWS - row;
@@ -195,18 +195,18 @@ const SHADERS = {
       const mortar = 1 - smooth(0.0035, 0.0065, d);
       const id = hash2(col, row, seed);
       const id2 = hash2(col, row, seed + 9);
-      const grit = fbm(u, v, 24, 24, 3, seed + 1);
-      const blotch = fbm(u, v, 5, 5, 3, seed + 2);
-      const soot = smooth(0.45, 0.85, fbm(u, v, 6, 2, 3, seed + 3));
-      const chipN = vnoise(u * 64, v * 64, 64, 64, seed + 4);
+      const grit = fbm(u, v, 48, 48, 3, seed + 1);
+      const blotch = fbm(u, v, 10, 10, 3, seed + 2);
+      const soot = smooth(0.5, 0.9, fbm(u, v, 12, 4, 3, seed + 3));
+      const chipN = vnoise(u * 128, v * 128, 128, 128, seed + 4);
       const chip = smooth(0.84, 0.9, chipN) * (1 - mortar);
-      const lum = 0.8 + id * 0.45 + (grit - 0.5) * 0.25 + (blotch - 0.5) * 0.2;
+      const lum = 0.86 + id * 0.32 + (grit - 0.5) * 0.25 + (blotch - 0.5) * 0.14;
       let r = (0.42 + id2 * 0.07) * lum;
       let g = (0.18 + id2 * 0.05) * lum;
       let b = (0.13 + id2 * 0.03) * lum;
       const mg = 0.5 + (grit - 0.5) * 0.25;
       r = mix(r, mg, mortar); g = mix(g, mg * 0.97, mortar); b = mix(b, mg * 0.92, mortar);
-      const sootK = soot * 0.5;
+      const sootK = soot * 0.2; // large stains come from the world-space macro variation, not from the tile
       r *= 1 - sootK; g *= 1 - sootK; b *= 1 - sootK;
       r = mix(r, 0.22, chip * 0.6); g = mix(g, 0.12, chip * 0.6); b = mix(b, 0.09, chip * 0.6);
       o.r = r; o.g = g; o.b = b;
@@ -364,7 +364,7 @@ const SHADERS = {
 export const TEXTURE_SPECS = [
   { id: 'concrete', size: 1024, strength: 2.2, texWorld: [2.0, 2.0] },
   { id: 'plaster', size: 512, strength: 2.0, texWorld: [2.0, 2.0] },
-  { id: 'brick', size: 1024, strength: 3.0, texWorld: [1.0, 0.6] },
+  { id: 'brick', size: 1024, strength: 3.0, texWorld: [2.0, 1.2] },
   { id: 'asphalt', size: 1024, strength: 2.5, texWorld: [3.0, 3.0] },
   { id: 'dirt', size: 512, strength: 3.2, texWorld: [3.0, 3.0] },
   { id: 'wood', size: 512, strength: 2.6, texWorld: [1.0, 1.0] },
@@ -409,6 +409,8 @@ export function pbrMaterial(set, opts = {}) {
   m.aoMapIntensity = opts.ao ?? 1;
   m.envMapIntensity = opts.env ?? 1;
   m.userData.texWorld = set.texWorld;
+  m.userData.macro = true; // static world surfaces get the anti-tiling colour variation
+  m.userData.patches = !!opts.patches; // plaster: irregular patches of exposed brick, placed in world space
   return m;
 }
 
@@ -432,6 +434,29 @@ export function makeDetailNormal() {
   set.orm.dispose();
   set.normalMap.userData = { detail: false };
   return set.normalMap;
+}
+
+/**
+ * Tileable low-frequency noise (R and G hold two independent layers). The renderer samples it in
+ * world space to vary the colour of every surface over metres, which hides texture repetition.
+ */
+export function makeMacroNoise() {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size, v = y / size, i = (y * size + x) * 4;
+      data[i] = Math.round(255 * smooth(0.25, 0.75, fbm(u, v, 4, 4, 4, 311)));
+      data[i + 1] = Math.round(255 * smooth(0.3, 0.7, fbm(u, v, 3, 3, 3, 733)));
+      data[i + 2] = 0; data[i + 3] = 255;
+    }
+  }
+  const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
 }
 
 // ======================================================================

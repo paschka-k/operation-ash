@@ -82,10 +82,10 @@ export class World {
       concrete: P(T.concrete),
       concreteDark: P(T.concrete, { color: 0x8b8782 }),
       concreteWarm: P(T.concrete, { color: 0xd8c9b4 }),
-      plaster: P(T.plaster),
-      plasterWarm: P(T.plaster, { color: 0xe9d3a8 }),
-      plasterGreen: P(T.plaster, { color: 0xa9bfa0 }),
-      plasterBlue: P(T.plaster, { color: 0x9db0c4 }),
+      plaster: P(T.plaster, { patches: true }),
+      plasterWarm: P(T.plaster, { color: 0xe9d3a8, patches: true }),
+      plasterGreen: P(T.plaster, { color: 0xa9bfa0, patches: true }),
+      plasterBlue: P(T.plaster, { color: 0x9db0c4, patches: true }),
       brick: P(T.brick),
       brickDark: P(T.brick, { color: 0xa88f82 }),
       asphalt: overlay(P(T.asphalt)),
@@ -329,13 +329,15 @@ export class World {
       }
     }
 
-    // Rubble where the walls broke.
+    // Rubble where the walls broke. It is a low spill (two 0.18 m steps), not a mound: anything
+    // taller than a bot can step over would turn the breach back into a wall for the nav grid.
+    const SPILL = 0.36;
     for (const br of o.breaches || []) {
       const mid = (br.from + br.to) / 2;
-      if (br.side === 'n') this.rubble(mid, z0 - 0.4, (br.to - br.from) * 0.5, 1.1);
-      if (br.side === 's') this.rubble(mid, z1 + 0.4, (br.to - br.from) * 0.5, 1.1);
-      if (br.side === 'w') this.rubble(x0 - 0.4, mid, (br.to - br.from) * 0.5, 1.1);
-      if (br.side === 'e') this.rubble(x1 + 0.4, mid, (br.to - br.from) * 0.5, 1.1);
+      if (br.side === 'n') this.rubble(mid, z0 - 0.4, (br.to - br.from) * 0.5, SPILL);
+      if (br.side === 's') this.rubble(mid, z1 + 0.4, (br.to - br.from) * 0.5, SPILL);
+      if (br.side === 'w') this.rubble(x0 - 0.4, mid, (br.to - br.from) * 0.5, SPILL);
+      if (br.side === 'e') this.rubble(x1 + 0.4, mid, (br.to - br.from) * 0.5, SPILL);
     }
 
     for (const dr of o.doors || []) this.doorList.push({ side: dr.side, at: dr.at, width: dr.width, x0, x1, z0, z1, storeys });
@@ -496,37 +498,94 @@ export class World {
     side('x', 1); side('x', -1); side('z', 1); side('z', -1);
   }
 
+  /**
+   * The dead city around the block: towers with setbacks, roof plant, antennas and shelled
+   * tops, so the horizon is a broken silhouette and not a row of boxes. One merged mesh,
+   * one material, no shadows; the fog does the aerial perspective.
+   */
   skyline() {
     const rng = this.rng;
+    const W = 256, H = 512, BAYS = 8, FLOORS = 16;
     const c = document.createElement('canvas');
-    c.width = 128; c.height = 256;
+    c.width = W; c.height = H;
     const g = c.getContext('2d');
     const e = document.createElement('canvas');
-    e.width = 128; e.height = 256;
+    e.width = W; e.height = H;
     const ge = e.getContext('2d');
-    g.fillStyle = '#36342f'; g.fillRect(0, 0, 128, 256);
-    ge.fillStyle = '#000'; ge.fillRect(0, 0, 128, 256);
-    for (let y = 8; y < 248; y += 16) {
-      for (let x = 8; x < 120; x += 16) {
-        g.fillStyle = '#16181b'; g.fillRect(x, y, 9, 11);
-        if (rng() < 0.12) { ge.fillStyle = rng() < 0.5 ? '#ffb55a' : '#ffd9a0'; ge.fillRect(x, y, 9, 11); }
+    g.fillStyle = '#8f8a80'; g.fillRect(0, 0, W, H);
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, W, H);
+    const bayW = W / BAYS, floorH = H / FLOORS;
+    for (let fy = 0; fy < FLOORS; fy++) {
+      const burnt = rng() < 0.2;
+      for (let bx = 0; bx < BAYS; bx++) {
+        const x = bx * bayW + 5, y = fy * floorH + 7, w = bayW - 10, h = floorH - 13;
+        const r = rng();
+        g.fillStyle = burnt ? '#0b0a09' : r < 0.14 ? '#191714' : r < 0.6 ? '#222a31' : '#2d363e';
+        g.fillRect(x, y, w, h);
+        if (!burnt && r > 0.88) { g.fillStyle = 'rgba(170,185,200,0.28)'; g.fillRect(x, y, w, h * 0.45); }
+        if (!burnt && rng() < 0.045) { ge.fillStyle = rng() < 0.5 ? '#ffb55a' : '#ffd9a0'; ge.fillRect(x + 2, y + 2, w - 4, h - 4); }
       }
+      if (burnt) {
+        const grad = g.createLinearGradient(0, (fy - 1) * floorH, 0, fy * floorH + 6);
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+        g.fillStyle = grad; g.fillRect(0, (fy - 1) * floorH, W, floorH + 6);
+      }
+      g.fillStyle = 'rgba(0,0,0,0.2)'; g.fillRect(0, fy * floorH, W, 2);
     }
+    for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(22,17,12,${(0.04 + rng() * 0.09).toFixed(3)})`; g.fillRect(rng() * W, 0, 2 + rng() * 7, H); }
     const map = new THREE.CanvasTexture(c);
-    map.colorSpace = THREE.SRGBColorSpace; map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.colorSpace = THREE.SRGBColorSpace; map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 4;
     const em = new THREE.CanvasTexture(e);
     em.colorSpace = THREE.SRGBColorSpace; em.wrapS = em.wrapT = THREE.RepeatWrapping;
-    const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.9 });
+    const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0.7, roughness: 0.85, vertexColors: true });
+
+    const TINTS = [[1, 0.98, 0.94], [0.86, 0.66, 0.56], [0.74, 0.82, 0.9], [0.56, 0.56, 0.58], [0.95, 0.88, 0.74]];
     const geos = [];
-    for (let i = 0; i < 46; i++) {
-      const a = (i / 46) * Math.PI * 2 + rng() * 0.1;
-      const dist = 105 + rng() * 120;
-      const w = 12 + rng() * 22, d = 12 + rng() * 22, h = 28 + rng() * 80;
+    // One box of a tower. Facades are mapped in metres (a bay is 3 m, a floor 3.4 m), roofs get plain concrete.
+    const part = (w, h, d, x, y, z, tint, shade, uo, vo) => {
       const g2 = new THREE.BoxGeometry(w, h, d);
-      const uv = g2.attributes.uv;
-      for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * (w / 14), uv.getY(k) * (h / 16));
-      g2.translate(Math.cos(a) * dist, h / 2 - 2, Math.sin(a) * dist);
+      const uv = g2.attributes.uv, nor = g2.attributes.normal;
+      const col = new Float32Array(uv.count * 3);
+      for (let k = 0; k < uv.count; k++) {
+        const roof = Math.abs(nor.getY(k)) > 0.5;
+        const span = Math.abs(nor.getX(k)) > 0.5 ? d : w;
+        if (roof) uv.setXY(k, 0.008, 0.004);
+        else uv.setXY(k, uo + (uv.getX(k) * span) / (BAYS * 3), vo + (uv.getY(k) * h) / (FLOORS * 3.4));
+        const s = roof ? shade * 0.55 : shade;
+        col[k * 3] = tint[0] * s; col[k * 3 + 1] = tint[1] * s; col[k * 3 + 2] = tint[2] * s;
+      }
+      g2.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g2.translate(x, y + h / 2, z);
       geos.push(g2);
+    };
+    const COUNT = 54;
+    for (let i = 0; i < COUNT; i++) {
+      const a = (i / COUNT) * Math.PI * 2 + rng() * 0.1;
+      const dist = 105 + rng() * 125;
+      const x = Math.cos(a) * dist, z = Math.sin(a) * dist;
+      const w = 14 + rng() * 22, d = 14 + rng() * 22;
+      const tint = TINTS[Math.floor(rng() * TINTS.length)], shade = 0.55 + rng() * 0.4;
+      const uo = Math.floor(rng() * BAYS) / BAYS, vo = Math.floor(rng() * FLOORS) / FLOORS;
+      const h1 = 22 + rng() * 60;
+      part(w, h1, d, x, -2, z, tint, shade, uo, vo);
+      let topY = h1 - 2, tw = w, td = d;
+      if (rng() < 0.55) { // setback tower
+        tw = w * (0.5 + rng() * 0.25); td = d * (0.5 + rng() * 0.25);
+        const h2 = 10 + rng() * 38;
+        part(tw, h2, td, x + (rng() - 0.5) * (w - tw) * 0.6, topY, z + (rng() - 0.5) * (d - td) * 0.6, tint, shade * 0.95, uo, vo);
+        topY += h2;
+      }
+      const r = rng();
+      if (r < 0.3) { // shelled: a jagged crown of wall stubs instead of a flat roof
+        const n = 4 + Math.floor(rng() * 4);
+        for (let k = 0; k < n; k++) {
+          const sw = tw * (0.14 + rng() * 0.22), sd = td * (0.14 + rng() * 0.22), sh = 2 + rng() * 9;
+          part(sw, sh, sd, x + (rng() - 0.5) * (tw - sw), topY, z + (rng() - 0.5) * (td - sd), tint, shade * 0.8, uo, vo);
+        }
+      } else {
+        if (r < 0.75) part(3 + rng() * 5, 2.5 + rng() * 3, 3 + rng() * 4, x + (rng() - 0.5) * tw * 0.5, topY, z + (rng() - 0.5) * td * 0.5, TINTS[3], shade * 0.8, 0, 0);
+        if (r > 0.6) part(0.5, 9 + rng() * 14, 0.5, x + (rng() - 0.5) * tw * 0.4, topY, z + (rng() - 0.5) * td * 0.4, TINTS[3], 0.5, 0.004, 0);
+      }
     }
     const mesh = new THREE.Mesh(mergeGeometries(geos, false), mat);
     mesh.castShadow = false; mesh.receiveShadow = false;
