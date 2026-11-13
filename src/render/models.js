@@ -4,12 +4,18 @@
 //   loadModelPack()        -> Promise<{loaded, missing, source}>
 //   getModel(id)           -> THREE.Object3D, a fresh clone
 //   getModelGeometry(id)   -> {geometry, material, size} for instancing
+//   getScanParts(id)       -> [{geometry, material}] of a scanned model, or null
 //   MODEL_IDS, modelPackState()
 //
 // If a glTF file <id>.glb exists in assets/models/ (or is embedded in
 // window.__ASSETS in the single-file build) that model is used, scaled to the
 // size the game expects. Otherwise the prop is built from primitives with the
 // PBR materials, so a missing file never breaks the game.
+//
+// A scan arrives with far more triangles than a prop in this game can afford
+// (the road barrier has 61 thousand, a cardboard box 17 thousand, and the box
+// is drawn ninety times). On load every scan is merged into one mesh per
+// material and thinned to a budget; its textures carry the detail.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -18,15 +24,24 @@ import { getMaterial, findAsset } from './materials.js';
 
 export const MODEL_IDS = ['barrel', 'crate', 'cardboard_box', 'ammo_box', 'concrete_barrier', 'covered_car'];
 
-/** Size in metres each model is fitted to (width x, height y, depth z). */
+/**
+ * Size in metres each model is fitted to (width x, height y, depth z). stretch: fill the box
+ * on every axis instead of keeping proportions (the barrier must match its 3 m collider).
+ * stack: the prop is a pile of [x, y, z] copies of the scan, each filling its share of the box.
+ * The scanned crate is a long flat ammunition crate; the crate of the game is a cube, so the
+ * cube is four of them, two high and two deep.
+ */
 export const MODEL_SIZES = {
   barrel: { w: 0.6, h: 0.9, d: 0.6 },
-  crate: { w: 1, h: 1, d: 1 },
+  crate: { w: 1, h: 1, d: 1, stack: [1, 2, 2] },
   cardboard_box: { w: 0.6, h: 0.45, d: 0.45 },
   ammo_box: { w: 0.36, h: 0.2, d: 0.24 },
-  concrete_barrier: { w: 3, h: 0.8, d: 0.7 },
+  concrete_barrier: { w: 3, h: 0.85, d: 0.7, stretch: true },
   covered_car: { w: 4.3, h: 1.5, d: 1.9 },
 };
+
+/** Most triangles a scanned model may keep. */
+const MODEL_BUDGET = { barrel: 3000, crate: 3200, cardboard_box: 500, concrete_barrier: 2500, covered_car: 6000 };
 
 const plain = (color, rough = 0.8, metal = 0.1, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
 let SHARED = null;
@@ -101,31 +116,159 @@ const LOADED = new Map();
 
 /** Scale a loaded model to the expected size, stand it on y=0 and centre it on x and z. */
 function fit(obj, size) {
+  if (size.stack) {
+    const [nx, ny, nz] = size.stack;
+    const unit = { w: size.w / nx, h: size.h / ny, d: size.d / nz, stretch: true };
+    const pile = new THREE.Group();
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) for (let k = 0; k < nz; k++) {
+      const one = fit(i + j + k === 0 ? obj : obj.clone(true), unit);
+      // not a perfect brick: every other crate is turned end for end and sits a little off
+      const odd = (i + j + k) % 2;
+      one.rotation.y = odd ? Math.PI : 0;
+      one.position.set((i - (nx - 1) / 2) * unit.w + (odd ? 0.012 : -0.008), j * unit.h, (k - (nz - 1) / 2) * unit.d);
+      pile.add(one);
+    }
+    return pile;
+  }
   const wrap = new THREE.Group();
   wrap.add(obj);
-  const bb = new THREE.Box3().setFromObject(obj);
   const s = new THREE.Vector3();
-  bb.getSize(s);
-  const k = Math.min(size.w / (s.x || 1), size.h / (s.y || 1), size.d / (s.z || 1));
-  obj.scale.multiplyScalar(k);
+  new THREE.Box3().setFromObject(obj).getSize(s);
+  // the long side of the model goes along the long side of its box
+  if ((size.w > size.d && s.z > s.x * 1.1) || (size.d > size.w && s.x > s.z * 1.1)) {
+    obj.rotation.y += Math.PI / 2;
+    new THREE.Box3().setFromObject(obj).getSize(s);
+  }
+  if (size.stretch) {
+    // the model is turned, so its own axes are scaled: wrap it and scale the wrapper
+    const inner = new THREE.Group();
+    wrap.remove(obj); inner.add(obj); wrap.add(inner);
+    inner.scale.set(size.w / (s.x || 1), size.h / (s.y || 1), size.d / (s.z || 1));
+    obj = inner;
+  } else {
+    obj.scale.multiplyScalar(Math.min(size.w / (s.x || 1), size.h / (s.y || 1), size.d / (s.z || 1)));
+  }
   const bb2 = new THREE.Box3().setFromObject(obj);
   const c = new THREE.Vector3();
   bb2.getCenter(c);
   obj.position.set(-c.x, -bb2.min.y, -c.z);
-  wrap.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return wrap;
 }
 
+/**
+ * Thin a mesh by vertex clustering: vertices that fall into the same cell of a grid become
+ * one. Texture seams and hard edges survive, because vertices of one cell stay apart when
+ * their texture coordinates or the side they face differ; they still share one position, so
+ * no cracks open. Returns an indexed geometry with position, normal and uv.
+ */
+function cluster(geo, cell) {
+  const pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv, idx = geo.index;
+  const n = pos.count, inv = 1 / cell, UVQ = 24;
+  const cellOf = new Int32Array(n), vertOf = new Int32Array(n);
+  const cells = new Map(), verts = new Map();
+  const cellSum = [];                       // x, y, z, count per cell
+  const vCell = [], vNor = [], vUv = [], vCount = [];
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const ck = Math.floor(x * inv) + ',' + Math.floor(y * inv) + ',' + Math.floor(z * inv);
+    let c = cells.get(ck);
+    if (c === undefined) { c = cellSum.length / 4; cells.set(ck, c); cellSum.push(0, 0, 0, 0); }
+    cellSum[c * 4] += x; cellSum[c * 4 + 1] += y; cellSum[c * 4 + 2] += z; cellSum[c * 4 + 3]++;
+    cellOf[i] = c;
+    const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
+    const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+    const facing = ax >= ay && ax >= az ? (nx > 0 ? 0 : 1) : ay >= az ? (ny > 0 ? 2 : 3) : (nz > 0 ? 4 : 5);
+    const u = uv.getX(i), v = uv.getY(i);
+    const vk = c + ':' + facing + ':' + Math.floor(u * UVQ) + ',' + Math.floor(v * UVQ);
+    let k = verts.get(vk);
+    if (k === undefined) { k = vCount.length; verts.set(vk, k); vCount.push(0); vCell.push(c); vNor.push(0, 0, 0); vUv.push(0, 0); }
+    vCount[k]++; vNor[k * 3] += nx; vNor[k * 3 + 1] += ny; vNor[k * 3 + 2] += nz; vUv[k * 2] += u; vUv[k * 2 + 1] += v;
+    vertOf[i] = k;
+  }
+  const tris = [], seen = new Set();
+  const count = idx ? idx.count : n;
+  for (let t = 0; t + 2 < count; t += 3) {
+    const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, c = idx ? idx.getX(t + 2) : t + 2;
+    const ca = cellOf[a], cb = cellOf[b], cc = cellOf[c];
+    if (ca === cb || cb === cc || ca === cc) continue;                 // collapsed to a line or a point
+    const lo = Math.min(ca, cb, cc), hi = Math.max(ca, cb, cc);
+    const key = lo + '_' + (ca + cb + cc - lo - hi) + '_' + hi;
+    if (seen.has(key)) continue;                                       // the same triangle twice
+    seen.add(key);
+    tris.push(vertOf[a], vertOf[b], vertOf[c]);
+  }
+  const m = vCount.length, P = new Float32Array(m * 3), N = new Float32Array(m * 3), U = new Float32Array(m * 2);
+  for (let k = 0; k < m; k++) {
+    const c = vCell[k], w = cellSum[c * 4 + 3];
+    P[k * 3] = cellSum[c * 4] / w; P[k * 3 + 1] = cellSum[c * 4 + 1] / w; P[k * 3 + 2] = cellSum[c * 4 + 2] / w;
+    const len = Math.hypot(vNor[k * 3], vNor[k * 3 + 1], vNor[k * 3 + 2]) || 1;
+    N[k * 3] = vNor[k * 3] / len; N[k * 3 + 1] = vNor[k * 3 + 1] / len; N[k * 3 + 2] = vNor[k * 3 + 2] / len;
+    U[k * 2] = vUv[k * 2] / vCount[k]; U[k * 2 + 1] = vUv[k * 2 + 1] / vCount[k];
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+  out.setIndex(tris);
+  return out;
+}
+
+const triCount = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+
+/**
+ * Turn a fitted scan into one mesh per material, in the space of the prop (standing on y = 0),
+ * with at most `budget` triangles in total.
+ */
+function optimise(wrap, budget) {
+  wrap.updateMatrixWorld(true);
+  const byMat = new Map();
+  wrap.traverse((o) => {
+    if (!o.isMesh) return;
+    const src = o.geometry, g = new THREE.BufferGeometry();
+    g.setAttribute('position', src.attributes.position.clone());
+    if (src.attributes.normal) g.setAttribute('normal', src.attributes.normal.clone());
+    g.setAttribute('uv', src.attributes.uv ? src.attributes.uv.clone() : new THREE.BufferAttribute(new Float32Array(src.attributes.position.count * 2), 2));
+    if (src.index) g.setIndex(src.index.clone());
+    g.applyMatrix4(o.matrixWorld);
+    if (!g.attributes.normal) g.computeVertexNormals();
+    const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (!byMat.has(mat)) byMat.set(mat, []);
+    byMat.get(mat).push(g);
+  });
+  const parts = [...byMat].map(([material, geos]) => ({ material, geometry: geos.length === 1 ? geos[0] : mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g)), false) }));
+  const total = parts.reduce((t, p) => t + triCount(p.geometry), 0);
+  if (total > budget) {
+    const size = new THREE.Vector3();
+    new THREE.Box3().setFromObject(wrap).getSize(size);
+    // coarser grid until the model fits its budget
+    let cell = Math.max(size.x, size.y, size.z) / 96, thin = parts;
+    for (let i = 0; i < 24; i++, cell *= 1.18) {
+      thin = parts.map((p) => ({ material: p.material, geometry: cluster(p.geometry, cell) }));
+      if (thin.reduce((t, p) => t + triCount(p.geometry), 0) <= budget) break;
+    }
+    parts.length = 0; parts.push(...thin);
+  }
+  const out = new THREE.Group();
+  for (const p of parts) {
+    const mesh = new THREE.Mesh(p.geometry, p.material);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    out.add(mesh);
+  }
+  out.userData.triangles = [total, parts.reduce((t, p) => t + triCount(p.geometry), 0)];
+  return out;
+}
+
 /** Look for model files. Whatever is missing falls back to primitives. */
-export async function loadModelPack({ base = 'assets/models/' } = {}) {
+export async function loadModelPack({ base = 'assets/models/', scans = true, onProgress = () => {} } = {}) {
   const loaded = [], missing = [];
   LOADED.clear();
-  for (const id of MODEL_IDS) {
+  for (const [i, id] of MODEL_IDS.entries()) {
+    onProgress(i / MODEL_IDS.length, id);
     try {
-      const url = await findAsset(id, ['glb'], base);
+      const url = scans ? await findAsset(id, ['glb'], base) : null;
       if (!url) { missing.push(id); continue; }
       const gltf = await new GLTFLoader().loadAsync(url);
-      LOADED.set(id, fit(gltf.scene, MODEL_SIZES[id]));
+      LOADED.set(id, optimise(fit(gltf.scene, MODEL_SIZES[id]), MODEL_BUDGET[id] ?? Infinity));
       loaded.push(id);
     } catch (e) {
       missing.push(id);
@@ -143,6 +286,16 @@ export function getModel(id) {
   const obj = LOADED.has(id) ? LOADED.get(id).clone(true) : PRIMITIVES[id]();
   obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return obj;
+}
+
+/**
+ * The meshes of a scanned model as plain data, for baking it into the static level:
+ * [{geometry, material}] in the space of the prop. null when the model is not a scan, so the
+ * caller keeps building the prop from boxes.
+ */
+export function getScanParts(id) {
+  if (!LOADED.has(id)) return null;
+  return LOADED.get(id).children.map((o) => ({ geometry: o.geometry, material: o.material }));
 }
 
 /**

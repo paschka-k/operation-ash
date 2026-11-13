@@ -1,26 +1,31 @@
 // Builds the game into ONE html file that opens with a double click: no server, no
 // install, no internet. Browsers refuse to load ES modules and neighbouring files
-// from file://, so everything is inlined: the bundled script (three.js included),
-// the styles and, in the full build, the optional photoscan textures and glTF models
-// from assets/ as data URIs.
+// from file://, so everything is inlined: the bundled script (three.js included)
+// and the styles.
 //
-//   npm run build        dist/game.html       with assets/ embedded when it has files
-//   npm run build:lite   dist/game-lite.html  procedural materials and primitive props only
+//   npm run build         dist/game.html        generated textures and primitive props, about 1 MB.
+//                                               This is the file kept in the repository.
+//   npm run build:scans   dist/game-scans.html  the same with the photoscans from assets/ embedded
+//                                               as data URIs (about 38 MB), still one offline file
+//   npm run build:web     dist/web/             for a web server: index.html (about 1 MB) and a copy
+//                                               of assets/ next to it; the page loads the scans it
+//                                               finds in assets/manifest.json and shows progress
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const lite = process.argv.includes('--lite');
-const outName = lite ? 'game-lite.html' : 'game.html';
+const scans = process.argv.includes('--scans');
+const web = process.argv.includes('--web');
+const outName = web ? 'web/index.html' : scans ? 'game-scans.html' : 'game.html';
 
 const MIME = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.glb': 'model/gltf-binary' };
 
 /** Embed assets/textures and assets/models as {file name: data URI}. */
 function collectAssets() {
   const out = {};
-  if (lite) return out;
+  if (!scans) return out;
   for (const dir of ['textures', 'models']) {
     const full = path.join(root, 'assets', dir);
     if (!fs.existsSync(full)) continue;
@@ -47,8 +52,9 @@ let js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 
 const assets = collectAssets();
 const assetCount = Object.keys(assets).length;
-// Always declared, even when empty: the game then knows everything is embedded and never probes the network.
-const assetScript = `<script>window.__ASSETS=${JSON.stringify(assets)};</script>
+// The single files declare it even when empty: the game then knows everything is embedded and
+// never probes the network. The web build leaves it out, so the page reads assets/manifest.json.
+const assetScript = web ? '' : `<script>window.__ASSETS=${JSON.stringify(assets)};</script>
 `;
 
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
@@ -59,8 +65,23 @@ html = html
   .replace(/<script type="module" src="src\/main.js"><\/script>/, () => `${assetScript}<script>\n${js}\n</script>`);
 
 if (html.includes('type="importmap"') || html.includes('src="src/main.js"') || html.includes('rel="stylesheet"')) throw new Error('build: index.html changed, an inlining step did not match. The output would not open from file://.');
-fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 const outPath = path.join(root, 'dist', outName);
+fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, html);
-const mb = (fs.statSync(outPath).size / 1048576).toFixed(2);
-console.log(`${outName}: ${mb} MB, ${assetCount} embedded asset file${assetCount === 1 ? '' : 's'}${lite ? ' (lite)' : ''}`);
+const mb = (bytes) => (bytes / 1048576).toFixed(2);
+let note = `${assetCount} embedded asset file${assetCount === 1 ? '' : 's'}`;
+if (web) {
+  // a fresh copy of assets/ (manifest, textures, models) next to the page
+  const from = path.join(root, 'assets'), to = path.join(root, 'dist', 'web', 'assets');
+  fs.rmSync(to, { recursive: true, force: true });
+  let files = 0, bytes = 0;
+  if (fs.existsSync(path.join(from, 'manifest.json'))) {
+    fs.cpSync(from, to, { recursive: true });
+    for (const dir of ['textures', 'models']) {
+      const full = path.join(to, dir);
+      if (fs.existsSync(full)) for (const f of fs.readdirSync(full)) { files++; bytes += fs.statSync(path.join(full, f)).size; }
+    }
+  }
+  note = `${files} asset file${files === 1 ? '' : 's'} beside it (${mb(bytes)} MB)`;
+}
+console.log(`${outName}: ${mb(fs.statSync(outPath).size)} MB, ${note}`);

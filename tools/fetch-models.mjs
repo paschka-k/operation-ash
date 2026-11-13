@@ -3,6 +3,7 @@
 //
 //   npm run models            download and pack barrel, crate, cardboard box, road barrier, covered car
 //   npm run models -- --dry   only read the catalog and print what would be downloaded
+//   npm run models -- --force download again even the models that are already on disk
 //
 // A model that fails keeps its primitive version. Run `npm run build` afterwards to embed
 // them in dist/game.html. The game scales each model to the size its props expect.
@@ -12,6 +13,7 @@ import { root, MODEL_MAP, getFiles, download, mb, ensureDir, writeManifest } fro
 import { packGlb } from './glb.mjs';
 
 const dry = process.argv.includes('--dry');
+const force = process.argv.includes('--force');
 const outDir = path.join(root, 'assets', 'models');
 
 let total = 0;
@@ -36,6 +38,10 @@ if (dry) { console.log('dry run: nothing downloaded'); process.exit(0); }
 
 ensureDir(outDir);
 for (const m of plan) {
+  if (!force && fs.existsSync(path.join(outDir, `${m.prop}.glb`))) {
+    console.log(`${m.prop}: already on disk, skipped`);
+    continue;
+  }
   try {
     process.stdout.write(`downloading ${m.id} ... `);
     const gltf = JSON.parse((await download(m.parts[0].url)).toString('utf8'));

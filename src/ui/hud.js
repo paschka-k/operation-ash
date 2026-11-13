@@ -102,6 +102,7 @@ export class HUD {
         <label class="row chk"><input type="checkbox" id="s-auto"><span data-t="autoQuality"></span></label>
         <label class="row chk"><input type="checkbox" id="s-inv"><span data-t="invertY"></span></label>
         <label class="row chk"><input type="checkbox" id="s-fps"><span data-t="showFps"></span></label>
+        <label class="row chk" id="row-scans"><input type="checkbox" id="s-scans"><span data-t="scans"></span></label>
         <button class="btn" id="btn-sback" data-t="back"></button>
       </div>`);
 
@@ -177,6 +178,7 @@ export class HUD {
     q('s-auto').addEventListener('change', (e) => { s.autoQuality = e.target.checked; g.saveSettings(); });
     q('s-inv').addEventListener('change', (e) => { s.invertY = e.target.checked; g.saveSettings(); });
     q('s-fps').addEventListener('change', (e) => { s.showFps = e.target.checked; g.saveSettings(); });
+    q('s-scans').addEventListener('change', (e) => { s.scans = e.target.checked; g.saveSettings(); });
     this.syncSettings();
   }
 
@@ -192,6 +194,8 @@ export class HUD {
     q('btn-psound').textContent = t('soundOn') + (s.sound !== false ? '  ✓' : '  ✗');
     q('s-inv').checked = s.invertY;
     q('s-fps').checked = s.showFps;
+    q('s-scans').checked = s.scans !== false;
+    q('row-scans').style.display = this.game.scansFound ? '' : 'none';   // a build without scans has nothing to switch
   }
 
   refreshLang() {

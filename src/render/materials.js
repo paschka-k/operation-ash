@@ -380,19 +380,23 @@ export const TEXTURE_SPECS = [
 export async function generateTextures(aniso = 8, onProgress = () => {}) {
   const out = {};
   for (let i = 0; i < TEXTURE_SPECS.length; i++) {
-    const spec = TEXTURE_SPECS[i];
-    onProgress(i / TEXTURE_SPECS.length, spec.id);
+    onProgress(i / TEXTURE_SPECS.length, TEXTURE_SPECS[i].id);
     await new Promise((r) => setTimeout(r, 0));
-    const seed = 1000 + i * 101;
-    const set = buildSet(spec.size, SHADERS[spec.id](seed), spec.strength, aniso);
-    set.texWorld = spec.texWorld;
-    out[spec.id] = set;
+    out[TEXTURE_SPECS[i].id] = generateSet(i, aniso);
   }
   onProgress(1, 'done');
   return out;
 }
 
-/** Create a standard PBR material from a generated set. */
+/** The generated set number i of TEXTURE_SPECS. The seed depends only on i. */
+function generateSet(i, aniso) {
+  const spec = TEXTURE_SPECS[i];
+  const set = buildSet(spec.size, SHADERS[spec.id](1000 + i * 101), spec.strength, aniso);
+  set.texWorld = spec.texWorld;
+  return set;
+}
+
+/** Create a standard PBR material from a texture set (generated or photoscanned). */
 export function pbrMaterial(set, opts = {}) {
   const m = new THREE.MeshStandardMaterial({
     map: set.map,
@@ -405,12 +409,15 @@ export function pbrMaterial(set, opts = {}) {
     color: opts.color ?? 0xffffff,
     side: opts.side ?? THREE.FrontSide,
   });
+  // a photoscan is brought to the brightness the level was designed with (see SCAN_FIT)
+  if (set.gain) { m.color.r *= set.gain[0]; m.color.g *= set.gain[1]; m.color.b *= set.gain[2]; }
   m.normalScale.set(opts.normalScale ?? 1, opts.normalScale ?? 1);
   m.aoMapIntensity = opts.ao ?? 1;
   m.envMapIntensity = opts.env ?? 1;
   m.userData.texWorld = set.texWorld;
   m.userData.macro = true; // static world surfaces get the anti-tiling colour variation
-  m.userData.patches = !!opts.patches; // plaster: irregular patches of exposed brick, placed in world space
+  // plaster: irregular patches of exposed brick, placed in world space (a scan brings its own damage)
+  m.userData.patches = !!opts.patches && set.patches !== false;
   return m;
 }
 
@@ -511,6 +518,75 @@ export async function findAsset(name, exts, base) {
   return null;
 }
 
+/**
+ * How each photoscan is fitted to the game.
+ *   world     metres one tile covers. From the Poly Haven catalog, except plaster (shown larger,
+ *             its stains repeat too visibly at the scanned 1.8 m) and metal
+ *   gain      linear colour multiplier that brings the scan's average to the average of the
+ *             generated texture it replaces, so the level keeps the palette it was lit for
+ *   grey      drop the scan's own colour and set its average brightness to this value: the
+ *             corrugated iron is rust red all over, and containers are painted per object
+ *   contrast  below 1 pulls the colour toward its average. The plaster scan is a badly damaged
+ *             wall; at full contrast a street of it reads as a pattern
+ *   patches   false: no shader patches of exposed brick on top, the scan has its own damage
+ * Averages were measured on the files: asphalt 0.22 against 0.02 generated, plaster 0.16
+ * against 0.36, dirt 0.23 against 0.09, corrugated iron 0.04 against 0.26.
+ */
+const SCAN_FIT = {
+  concrete: { world: [2.7, 2.7], gain: [0.8, 0.85, 1.1] },
+  plaster: { world: [2.6, 2.6], gain: [2.2, 2.2, 2.2], contrast: 0.35, patches: false },
+  brick: { world: [1, 1], gain: [1.1, 0.9, 0.85] },
+  asphalt: { world: [2.35, 2.35], gain: [0.21, 0.25, 0.3] },
+  dirt: { world: [3, 3], gain: [0.42, 0.4, 0.45] },
+  wood: { world: [1.8, 1.8], gain: [1, 0.85, 0.7] },
+  metal: { world: [1.5, 1.5], gain: [1.2, 1.2, 1.2] },
+  container: { world: [2, 2], grey: 0.26, contrast: 0.4 },
+  // sandbag: no scan. A cloth scan (hessian) was tried: it shows the weave but not the bags,
+  // and a wall of sandbags turned into a block of fabric. The generated set draws the bags.
+};
+
+const toLinear = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+const toSrgb = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+
+/**
+ * A colour texture regraded on a canvas, in linear light. grey: keep brightness only and set
+ * its average to that level. contrast: scale the distance of every pixel from the average.
+ */
+function gradeTexture(tex, { grey = 0, contrast = 1 }) {
+  const img = tex.image;
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width; canvas.height = img.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height), d = data.data, n = d.length / 4;
+  const lut = new Float32Array(256);
+  for (let i = 0; i < 256; i++) lut[i] = toLinear(i / 255);
+  const lin = new Float32Array(n * 3), mean = [0, 0, 0];
+  for (let i = 0, k = 0; i < d.length; i += 4, k += 3) {
+    let r = lut[d[i]], g = lut[d[i + 1]], b = lut[d[i + 2]];
+    if (grey) r = g = b = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    lin[k] = r; lin[k + 1] = g; lin[k + 2] = b;
+    mean[0] += r; mean[1] += g; mean[2] += b;
+  }
+  for (let c = 0; c < 3; c++) mean[c] /= n;
+  const scale = grey ? grey / (mean[0] || 1) : 1;
+  for (let i = 0, k = 0; i < d.length; i += 4, k += 3) {
+    for (let c = 0; c < 3; c++) {
+      const v = (mean[c] + (lin[k + c] - mean[c]) * contrast) * scale;
+      d[i + c] = Math.round(255 * toSrgb(Math.min(1, Math.max(0, v))));
+    }
+  }
+  ctx.putImageData(data, 0, 0);
+  const out = new THREE.CanvasTexture(canvas);
+  out.wrapS = out.wrapT = THREE.RepeatWrapping;
+  out.colorSpace = tex.colorSpace;
+  out.anisotropy = tex.anisotropy;
+  out.generateMipmaps = true;
+  out.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.dispose();
+  return out;
+}
+
 function loadImageTexture(url, srgb, aniso) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -529,26 +605,39 @@ function loadImageTexture(url, srgb, aniso) {
   });
 }
 
-/**
- * Build the textures. The procedural sets are generated first (they are the
- * guaranteed path), then each kind is upgraded if its photoscan files exist.
- */
-export async function loadTexturePack({ aniso = 8, onProgress = () => {}, base = 'assets/textures/' } = {}) {
-  const sets = await generateTextures(aniso, (p, id) => onProgress(p * 0.9, id));
-  const state = { sets, source: 'procedural', loaded: [], missing: [] };
+/** The photoscan of one kind as a texture set, or null when its three files are not all there. */
+async function loadScan(kind, base, aniso) {
+  const fit = SCAN_FIT[kind];
+  if (!fit) return null;   // a scan that was never fitted to the level would look wrong
   const exts = ['webp', 'jpg', 'png'];
-  for (const kind of KINDS) {
-    try {
-      const [d, n, a] = await Promise.all([
-        findAsset(kind + '_diff', exts, base), findAsset(kind + '_nor', exts, base), findAsset(kind + '_arm', exts, base),
-      ]);
-      if (!d || !n || !a) { state.missing.push(kind); continue; }
-      const [map, normalMap, orm] = await Promise.all([loadImageTexture(d, true, aniso), loadImageTexture(n, false, aniso), loadImageTexture(a, false, aniso)]);
-      sets[kind] = { map, normalMap, orm, texWorld: sets[kind].texWorld, scan: true };
-      state.loaded.push(kind);
-    } catch (e) {
-      state.missing.push(kind);
-    }
+  const [d, n, a] = await Promise.all([
+    findAsset(kind + '_diff', exts, base), findAsset(kind + '_nor', exts, base), findAsset(kind + '_arm', exts, base),
+  ]);
+  if (!d || !n || !a) return null;
+  const [map, normalMap, orm] = await Promise.all([loadImageTexture(d, true, aniso), loadImageTexture(n, false, aniso), loadImageTexture(a, false, aniso)]);
+  return {
+    map: fit.grey || fit.contrast ? gradeTexture(map, fit) : map, normalMap, orm,
+    texWorld: fit.world, gain: fit.gain, patches: fit.patches, scan: true,
+  };
+}
+
+/**
+ * Build the textures, one surface kind at a time: its photoscan when the files are there and
+ * scans are wanted, the generated set otherwise. A scan that fails to load falls back to the
+ * generated set, so a missing or broken file never breaks the game.
+ */
+export async function loadTexturePack({ aniso = 8, onProgress = () => {}, base = 'assets/textures/', scans = true } = {}) {
+  const sets = {};
+  const state = { sets, source: 'procedural', loaded: [], missing: [] };
+  for (let i = 0; i < TEXTURE_SPECS.length; i++) {
+    const kind = TEXTURE_SPECS[i].id;
+    onProgress(i / TEXTURE_SPECS.length, kind);
+    await new Promise((r) => setTimeout(r, 0));   // let the loading bar paint
+    let set = null;
+    if (scans) { try { set = await loadScan(kind, base, aniso); } catch (e) { set = null; } }
+    if (set) { set.texWorld = set.texWorld || TEXTURE_SPECS[i].texWorld; state.loaded.push(kind); }
+    else { set = generateSet(i, aniso); state.missing.push(kind); }
+    sets[kind] = set;
   }
   state.source = state.loaded.length === 0 ? 'procedural' : state.missing.length === 0 ? 'scans' : 'mixed';
   PACK = state;

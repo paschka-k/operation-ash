@@ -11,6 +11,7 @@ import { generateCoverPoints, indexCover } from '../core/cover.js';
 import { createProps as createPropsFor } from './props.js';
 import { NavGrid } from '../core/nav.js';
 import { pbrMaterial } from '../render/materials.js';
+import { getScanParts } from '../render/models.js';
 import { MAP_HALF } from '../config.js';
 
 const STOREY = 3.4;
@@ -459,9 +460,25 @@ export class World {
   }
 
   // --------------------------------------------------------------- props
+  /**
+   * Bake a scanned model into the static level at cx, cz, turned by yaw. Returns false when
+   * the scan is not there, and the caller builds the prop from boxes as before.
+   */
+  scan(id, cx, cz, yaw = 0) {
+    const parts = getScanParts(id);
+    if (!parts) return false;
+    const m = new THREE.Matrix4().makeRotationY(yaw).setPosition(cx, 0, cz);
+    for (const p of parts) this._addGeo(p.material, p.geometry.clone().applyMatrix4(m));
+    return true;
+  }
+
   jersey(cx, cz, yaw = 0) {
     const horiz = Math.abs(Math.sin(yaw)) < 0.5;
     const w = horiz ? 3 : 0.7, d = horiz ? 0.7 : 3;
+    if (this.scan('concrete_barrier', cx, cz, horiz ? 0 : Math.PI / 2)) {
+      this.addCollider(makeBox(cx, 0.4, cz, w, 0.8, d, { kind: 'concrete' }));
+      return;
+    }
     this.box(cx, 0.4, cz, w, 0.8, d, this.m.concrete, { kind: 'concrete' });
     // wedge look: a narrower top block
     this.box(cx, 0.88, cz, horiz ? w - 0.1 : 0.35, 0.16, horiz ? 0.35 : d - 0.1, this.m.concrete, { collide: false });
@@ -494,6 +511,15 @@ export class World {
       }
     }
     this.fireSpots.push({ x: cx, z: cz });
+    return c;
+  }
+
+  /** A car left under a tarpaulin. Without the scan it is one more wreck. */
+  coveredCar(cx, cz, yaw = 0, paint = this.m.metalChar) {
+    const alongX = Math.abs(Math.sin(yaw)) < 0.5;
+    if (!this.scan('covered_car', cx, cz, alongX ? 0 : Math.PI / 2)) return this.car(cx, cz, yaw, paint);
+    const c = makeBox(cx, 0.45, cz, alongX ? 4.3 : 1.8, 0.9, alongX ? 1.8 : 4.3, { kind: 'metal' });
+    this.addCollider(c);
     return c;
   }
 
@@ -837,11 +863,11 @@ export class World {
     this.sandbags(-12, -2.6, 3, true);
     this.sandbags(12, 2.6, 3, true);
     this.car(-9, 3.4, 0, m.metalChar);
-    this.car(9.5, -3.2, 0, m.metalGray);
+    this.coveredCar(9.5, -3.2, 0, m.metalGray);
     this.car(2.6, 12.5, Math.PI / 2, m.metalChar);
     this.car(-3.2, -12, Math.PI / 2, m.metalRed);
-    this.car(0, 24, Math.PI / 2, m.metalChar);
-    this.car(-20, -4, 0, m.metalGray);
+    this.coveredCar(0, 24, Math.PI / 2, m.metalChar);
+    this.coveredCar(-20, -4, 0, m.metalGray);
     this.car(20, 4.2, 0, m.metalChar);
     this.car(3.4, -30, Math.PI / 2, m.metalYellow);
     this.crater(-2, 0, 3.2);

@@ -4,6 +4,7 @@
 //   npm run textures              download diffuse, normal and ARM maps at 1k
 //   npm run textures -- --dry     only read the catalog and print what would be downloaded
 //   npm run textures -- --res 2k  other resolution (1k is the default and keeps the build small)
+//   npm run textures -- --force   download again even the sets that are already complete on disk
 //
 // Each kind needs three files: <kind>_diff.jpg, <kind>_nor.jpg (OpenGL normals) and
 // <kind>_arm.jpg (R ambient occlusion, G roughness, B metalness). A kind that fails keeps
@@ -13,6 +14,7 @@ import path from 'node:path';
 import { root, TEXTURE_MAP, getFiles, download, mb, ensureDir, writeManifest } from './assets-lib.mjs';
 
 const dry = process.argv.includes('--dry');
+const force = process.argv.includes('--force');
 const resIdx = process.argv.indexOf('--res');
 const res = resIdx > 0 ? process.argv[resIdx + 1] : '1k';
 const outDir = path.join(root, 'assets', 'textures');
@@ -41,6 +43,11 @@ if (dry) { console.log('dry run: nothing downloaded'); process.exit(0); }
 
 ensureDir(outDir);
 for (const set of plan) {
+  // a second run after a network failure only fetches what is missing
+  if (!force && set.picks.every((p) => fs.existsSync(path.join(outDir, `${set.kind}_${p.suffix}.jpg`)))) {
+    console.log(`${set.kind}: already on disk, skipped`);
+    continue;
+  }
   // all three maps of a set are downloaded first and written together, so a failure never leaves half a set
   try {
     const got = [];

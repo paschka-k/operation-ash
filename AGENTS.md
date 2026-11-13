@@ -9,8 +9,9 @@ npm install                 # three and esbuild
 npm start                   # http://localhost:5174, no build step
 npm test                    # core tests under plain Node
 npm run test:tools          # glb packer tests (tools, not game logic)
-npm run build               # dist/game.html, one file, opens with a double click
-npm run build:lite          # same without optional assets
+npm run build               # dist/game.html, one file, opens with a double click (no photoscans, kept in git)
+npm run build:scans         # dist/game-scans.html, the same with the photoscans from assets/ embedded
+npm run build:web           # dist/web/, the page plus assets/ next to it; this is what GitHub Pages publishes
 npm run dashboard           # check the gates, regenerate .autopilot/*
 npm run textures -- --dry   # print what the photoscan fetcher would download (downloads nothing)
 npm run models -- --dry
@@ -26,6 +27,8 @@ npm run models -- --dry
 - The same flush builds one shadow-only mesh and one shape for the ambient occlusion pass out of all static geometry. Static geometry added outside the batches gets no shadow and no occlusion, so add it through `box`, `_addGeo` and friends before the flush.
 - A bot is one skinned mesh (`src/enemies/soldier.js`). Add gear as parts of that mesh, not as separate meshes.
 - Never download anything without the user's explicit consent. Photoscans are fetched only by `tools/fetch-*.mjs`, which the user runs.
+- A photoscan is used only after it is fitted to the level: textures in `SCAN_FIT` (`src/render/materials.js`), models in `MODEL_SIZES` and `MODEL_BUDGET` (`src/render/models.js`). Check a new scan in the browser next to the generated version (`?noscans`) before keeping it.
+- The level must build and play the same without `assets/`: every use of a scan has a fallback built from boxes.
 - Process source of truth: `.autopilot/data.mjs`. After editing it run `npm run dashboard`. Do not hand-edit `manifest.md`, `spec.md`, `state.json` or `dashboard.html`.
 
 ## Layout

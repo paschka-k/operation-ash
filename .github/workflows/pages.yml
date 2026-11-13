@@ -26,15 +26,12 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:tools
-      - run: npm run build
-      - name: Prepare the site (the single file build becomes index.html)
-        run: |
-          mkdir site
-          cp dist/game.html site/index.html
+      # dist/web: index.html and, when the repository carries assets/, the photoscans next to it
+      - run: npm run build:web
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: dist/web
 
   deploy:
     needs: build

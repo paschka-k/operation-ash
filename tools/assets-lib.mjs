@@ -18,7 +18,7 @@ export const TEXTURE_MAP = {
   wood: 'weathered_brown_planks',
   metal: 'rusty_metal_02',
   container: 'rusty_corrugated_iron',
-  sandbag: 'hessian_230',
+  // sandbag has no scan: a cloth scan shows the weave but not the bags (see SCAN_FIT in materials.js)
 };
 
 /** Which Poly Haven model feeds which prop. ammo_box has no scan and stays procedural. */
@@ -38,10 +38,19 @@ export async function getJson(url) {
 
 export async function getFiles(id) { return getJson(`${API}/files/${id}`); }
 
+/** Fetch one file. The CDN now and then answers 5xx for a single file, so try three times. */
 export async function download(url) {
-  const r = await fetch(url, { headers: UA });
-  if (!r.ok) throw new Error(`${r.status} ${url}`);
-  return Buffer.from(await r.arrayBuffer());
+  let last;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    try {
+      const r = await fetch(url, { headers: UA });
+      if (r.ok) return Buffer.from(await r.arrayBuffer());
+      last = new Error(`${r.status} ${url}`);
+      if (r.status < 500) break;   // a missing or forbidden file will not appear by asking again
+    } catch (e) { last = e; }
+  }
+  throw last;
 }
 
 export function mb(bytes) { return (bytes / 1048576).toFixed(2) + ' MB'; }

@@ -54,10 +54,14 @@ class Game {
     }
 
     const aniso = Math.min(QUALITY[this.settings.quality].aniso, this.gr.renderer.capabilities.getMaxAnisotropy());
-    const pack = await loadTexturePack({ aniso, onProgress: (p, id) => this.hud.setLoading(p * 0.75, t('loadTextures') + ' · ' + id) });
+    // Photoscans are optional files. The setting and ?noscans in the address leave them out.
+    const scans = this.settings.scans !== false && !new URLSearchParams(location.search).has('noscans');
+    const pack = await loadTexturePack({ aniso, scans, onProgress: (p, id) => this.hud.setLoading(p * 0.68, t('loadTextures') + ' · ' + id) });
     this.textures = pack.sets;
     this.texturePack = pack;
-    this.modelPack = await loadModelPack();
+    this.modelPack = await loadModelPack({ scans, onProgress: (p, id) => this.hud.setLoading(0.68 + p * 0.12, t('loadModels') + ' · ' + id) });
+    // the settings screen offers the switch only when there is something to switch
+    this.scansFound = !scans || pack.loaded.length + this.modelPack.loaded.length > 0;
 
     this.hud.setLoading(0.82, t('loadWorld'));
     await new Promise((r) => setTimeout(r, 20));

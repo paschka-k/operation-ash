@@ -47,8 +47,8 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
 | Слой | Фабрика | Что делает | Читает из ядра |
 |------|---------|-----------|----------------|
 | `render/pipeline` | `createPipeline(canvas, settings)` | рендерер, небо, каскадные тени, постобработка, пресеты качества; `prepareMaterial`, `addNoAO`, `swapForAO(full, shape)` | нет |
-| `render/materials` | `loadTexturePack`, `getMaterial`, `pbrMaterial` | процедурные PBR-наборы, замена файлами из `assets/textures` | нет |
-| `render/models` | `loadModelPack`, `getModel`, `getModelGeometry` | glTF из `assets/models`, запасные примитивы | нет |
+| `render/materials` | `loadTexturePack`, `getMaterial`, `pbrMaterial` | порождённые PBR-наборы; фотосканы из `assets/textures`, подогнанные таблицей `SCAN_FIT` (размер плитки, цвет, контраст) | нет |
+| `render/models` | `loadModelPack`, `getModel`, `getModelGeometry`, `getScanParts` | glTF из `assets/models`, слитые по материалу и упрощённые до бюджета треугольников; запасные примитивы | нет |
 | `world/level` | `buildLevel(scene, game)` | геометрия, коллайдеры, сетка, укрытия, точки появления; слитые сетки статики для теней и для прохода AO | `collision`, `nav`, `cover` |
 | `world/details` | `addBigProps`, `addInteriors`, `addDetails` | уличная мебель, интерьеры, детали выше глаз | `collision` |
 | `world/scatter` | `createScatter(scene, level, quality)` | тысячи мелких объектов инстансингом | нет |
@@ -72,3 +72,11 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
 
 - Правила: `npm test` (тесты ядра, обычный Node).
 - Игра целиком: открыть `http://localhost:5174/` и работать через `window.__game`: `startGame({noLock:true})`, `stepFrames(n, dt, render)`, `snapshot()`, `countVisibleItems(x, y, z, yaw, pitch)`, `input.inject({keys, left, right})`. Снимок холста: добавить `?shots` к адресу и запустить `node tools/shot-server.mjs <папка> 5175`.
+
+## Сборки
+
+| Команда | Что получается | Для чего |
+|---------|----------------|----------|
+| `npm run build` | `dist/game.html`, 1 МБ, без сканов, хранится в git | двойной щелчок, без сети |
+| `npm run build:scans` | `dist/game-scans.html`, около 34 МБ, сканы внутри | то же со сканами |
+| `npm run build:web` | `dist/web/index.html` и копия `assets/` рядом | сайт: страница читает `assets/manifest.json` и грузит сканы по сети |

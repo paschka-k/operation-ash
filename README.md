@@ -10,10 +10,12 @@ A first-person shooter in the style of Call of Duty, set in a ruined city block.
 
 ![the three enemy types](.autopilot/screenshot-soldiers.jpg)
 
+![with the optional photoscans: crates, road barriers, asphalt](.autopilot/screenshot-scans.jpg)
+
 ## Play
 
 - Open the link above, or
-- Double-click `dist/game.html` (one file, about 1 MB, everything inside), or
+- Double-click `dist/game.html` (one file, about 1 MB, everything inside, generated textures), or
 - `npm install` then `npm start` and open http://localhost:5174.
 
 Rebuild the single file with `npm run build`.
@@ -48,40 +50,38 @@ Unreal Engine 5 quality (Nanite, Lumen, scanned assets everywhere) is not reacha
 
 Enemy soldiers are one skinned mesh each (about five thousand triangles, twelve bones): helmet, glasses, plate carrier with pouches, pack, camouflage from a generated texture, a rifle or pistol held by solved arm poses. They are still built from simple shapes, not sculpted or scanned.
 
-The biggest remaining step is real photoscans. The pipeline for them is built and tested with procedural fallbacks, but the files are not downloaded yet (see below).
+Photoscans (see below) replace eight surfaces and five props when their files are present. That moves walls, roads and crates much closer to a photograph, but the buildings, the weapons and the soldiers are still modelled from simple shapes.
 
 ## Optional photoscans (CC0, Poly Haven)
 
-Nothing is downloaded unless you run these scripts yourself. Both have a dry mode that only reads the catalog.
+The game runs without them. With them, eight surfaces use scanned PBR textures and five props use scanned models. Nothing is downloaded unless you run the scripts yourself. Both have a dry mode that only reads the catalog.
 
 ```bash
-npm run textures -- --dry   # 9 PBR sets, about 17.0 MB at 1k, jpg
+npm run textures -- --dry   # 8 PBR sets, about 13.9 MB at 1k, jpg
 npm run models -- --dry     # 5 models, about 10.7 MB, packed to .glb
 npm run textures            # download into assets/textures
 npm run models              # download into assets/models
-npm run build               # embed them into dist/game.html
+npm start                   # the dev server picks them up from assets/
+npm run build:scans         # dist/game-scans.html, one offline file with the scans inside (about 34 MB)
+npm run build:web           # dist/web/: index.html (1 MB) and the scans next to it, for a web server
 ```
 
-| Surface or prop | Poly Haven id | Size |
-|-----------------|---------------|------|
-| concrete | concrete_wall_008 | 1.72 MB |
-| plaster | worn_plaster_wall | 1.75 MB |
-| brick | red_brick_03 | 1.73 MB |
-| asphalt | asphalt_floor | 3.14 MB |
-| dirt | gravel_ground_01 | 2.31 MB |
-| wood | weathered_brown_planks | 0.62 MB |
-| metal | rusty_metal_02 | 1.07 MB |
-| container | rusty_corrugated_iron | 1.60 MB |
-| sandbag | hessian_230 | 3.08 MB |
-| barrel | Barrel_01 | 0.66 MB |
-| crate | wooden_crate_01 | 2.17 MB |
-| cardboard box | cardboard_box_01 | 2.07 MB |
-| concrete barrier | concrete_road_barrier | 3.58 MB |
-| covered car | covered_car | 2.24 MB |
+A second run only fetches what is missing, and each file is tried three times.
 
-Source: https://api.polyhaven.com (CC0). A set that fails to download keeps its procedural version.
+| Game surface | Poly Haven texture | | Prop | Poly Haven model |
+|---|---|---|---|---|
+| concrete | concrete_wall_008 | | barrel | Barrel_01 |
+| plaster | worn_plaster_wall | | crate (a stack of four) | wooden_crate_01 |
+| brick | red_brick_03 | | cardboard box | cardboard_box_01 |
+| asphalt | asphalt_floor | | road barrier | concrete_road_barrier |
+| ground | gravel_ground_01 | | car under a tarpaulin | covered_car |
+| wood | weathered_brown_planks | | | |
+| metal | rusty_metal_02 | | | |
+| containers | rusty_corrugated_iron | | | |
 
-With everything embedded, `dist/game.html` grows from about 1 MB to about 37 MB (28 MB of files in base64), so it takes a few seconds to open. `npm run build:lite` keeps the small file without them.
+Scans are not dropped in as they come. Each texture is fitted to the level (real tile size, brightness of the surface it replaces, the corrugated iron loses its rust colour so containers keep their paint), and each model is thinned on load from tens of thousands of triangles to a budget. Sandbags keep their generated texture: a cloth scan shows the weave but not the bags.
+
+The switch "Photoscanned textures and models" in the settings, or `?noscans` in the address, turns them off.
 
 ## Project
 
