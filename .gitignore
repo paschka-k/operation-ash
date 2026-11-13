@@ -1,0 +1,14 @@
+node_modules/
+
+# Optional photoscans fetched by `npm run textures` and `npm run models` (CC0, Poly Haven).
+# They are large and reproducible, so they are not stored in the repository.
+assets/
+
+# The ready to play build is kept: dist/game.html. The lite build is identical until assets exist.
+dist/game-lite.html
+
+# Local tool settings and noise
+.claude/settings.local.json
+*.log
+.DS_Store
+Thumbs.db
