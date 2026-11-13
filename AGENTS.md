@@ -21,7 +21,9 @@ npm run models -- --dry
 
 - `src/core` is pure: no three, DOM or window. Time (`now`, ms) and randomness (`rng`) come in as parameters. Tests go through it only (`tests/core`).
 - Balance numbers live in `src/core/rules.js`. Never copy them into the game layers.
-- A new weapon is one row in `WEAPON_SPECS` plus an entry in `WEAPON_ORDER`, and a model in `src/weapons/viewmodel.js`.
+- A new weapon is one row in `WEAPON_SPECS` plus an entry in `WEAPON_ORDER`, a builder in `src/weapons/guns.js` and its row in `VIEW` (`src/weapons/viewmodel.js`).
+- A weapon in hand is one mesh per moving part (`Sculpt` in `src/weapons/sculpt.js`): colour, metalness, roughness and glow are painted per vertex. Do not add a mesh per detail.
+- Crates, barrels and pickups are pools of instances (`src/world/pool.js`). A new kind of dynamic prop is a pool with a simple proxy shape for the shadow maps, not a mesh per prop.
 - Every scene material must go through the renderer's `prepareMaterial`, otherwise it gets no cascaded shadows.
 - Static level geometry is merged per material and per 30 m map chunk (`World._flush`). Do not create one mesh per prop.
 - The same flush builds one shadow-only mesh and one shape for the ambient occlusion pass out of all static geometry. Static geometry added outside the batches gets no shadow and no occlusion, so add it through `box`, `_addGeo` and friends before the flush.

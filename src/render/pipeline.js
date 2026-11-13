@@ -231,6 +231,36 @@ export class GameRenderer {
     this.viewSun = vSun;
     const vHemi = new THREE.HemisphereLight(0xb8c8e0, 0x4a3a2a, 0.9);
     this.viewScene.add(vHemi);
+    this.viewHemi = vHemi;
+    // A weak light from behind the camera: the faces of the weapon that look at the player
+    // would otherwise be lit by nothing and go black.
+    const vFill = new THREE.DirectionalLight(0xc8d4e6, 0.8);
+    vFill.position.set(0.15, 0.35, 1);
+    this.viewScene.add(vFill);
+    this.viewFill = vFill;
+    /** How much direct sun reaches the weapon in hand, and how much open sky is above it, 0..1. The weapon layer sets both. */
+    this.weaponSun = 1;
+    this.weaponSky = 1;
+    this._viewQ = new THREE.Quaternion();
+  }
+
+  /**
+   * The weapon is drawn in the space of the camera, so its light has to be brought there: the
+   * sun and the reflected sky turn against the view, and the sun fades when the player is in shade.
+   */
+  _updateViewLight() {
+    const q = this._viewQ.copy(this.camera.quaternion).invert();
+    this.viewSun.position.copy(this.sunDir).applyQuaternion(q).multiplyScalar(10);
+    this.viewSun.intensity = 3.0 * (0.1 + 0.9 * this.weaponSun);
+    // under a roof the sky light is mostly gone as well
+    const sky = 0.5 + 0.5 * this.weaponSky;
+    this.viewHemi.intensity = 0.9 * sky;
+    this.viewFill.intensity = 0.8 * sky;
+    this.viewHemi.position.set(0, 1, 0).applyQuaternion(q);
+    // the sky seen from the space of the camera is the sky turned by the inverse of the view
+    // (three r186 looks the reflection up with the inverse of this rotation; checked with a mirror ball)
+    this.viewScene.environmentRotation.setFromQuaternion(q);
+    this.viewScene.environmentIntensity = 0.36 + 0.24 * this.weaponSky + 0.25 * this.weaponSun;
   }
 
   _buildEnvironment() {
@@ -561,6 +591,7 @@ varying float vMacroUp;`)
     this.grade.uniforms.time.value += dt;
     this.camera.updateMatrixWorld();
     this._updateRays();
+    this._updateViewLight();
     this.csm.update();
     this.renderer.shadowMap.needsUpdate = true;
     this.composer.render(dt);

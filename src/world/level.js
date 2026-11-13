@@ -12,6 +12,7 @@ import { createProps as createPropsFor } from './props.js';
 import { NavGrid } from '../core/nav.js';
 import { pbrMaterial } from '../render/materials.js';
 import { getScanParts } from '../render/models.js';
+import { lightOnly, writeNothing } from './pool.js';
 import { MAP_HALF } from '../config.js';
 
 const STOREY = 3.4;
@@ -75,7 +76,7 @@ function mergedShape(geos, withNormals, side = THREE.FrontSide) {
   if (nor) geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   // Both passes that use these meshes bring their own material. This one writes nothing, so a
   // shape that ever did reach the colour pass would cost a draw call and show nothing.
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side, colorWrite: false, depthWrite: false }));
+  const mesh = new THREE.Mesh(geo, writeNothing(side));
   mesh.matrixAutoUpdate = false;
   mesh.receiveShadow = false;
   return mesh;
@@ -93,8 +94,7 @@ function shadowCaster(geos, side) {
   const mesh = mergedShape(geos, false, side);
   mesh.name = 'shadowCaster';
   mesh.castShadow = true;
-  // left and right planes of an orthographic frustum face exactly away from each other
-  mesh.intersectsFrustum = (frustum) => frustum.planes[0].normal.dot(frustum.planes[1].normal) < -0.9999;
+  mesh.intersectsFrustum = lightOnly;
   return mesh;
 }
 
@@ -154,10 +154,12 @@ export class World {
       containerRust: P(T.container, { color: 0x9a6a46 }),
       rubber: new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 }),
       window: new THREE.MeshStandardMaterial({ color: 0x07090c, roughness: 0.15, metalness: 0.2 }),
-      paintWhite: overlay(new THREE.MeshStandardMaterial({ color: 0xcfcbbf, roughness: 0.75 })),
-      paintYellow: overlay(new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.75 })),
+      // worn road paint: at full white the markings glowed, even in shade
+      paintWhite: overlay(new THREE.MeshStandardMaterial({ color: 0x77756d, roughness: 0.9 })),
+      paintYellow: overlay(new THREE.MeshStandardMaterial({ color: 0x8a701c, roughness: 0.9 })),
       rebar: new THREE.MeshStandardMaterial({ color: 0x4a2f22, roughness: 0.7, metalness: 0.6 }),
-      scorch: overlay(new THREE.MeshStandardMaterial({ color: 0x141210, roughness: 1 })),
+      // soot: its density comes from the alpha of the vertex colours (see crater())
+      scorch: overlay(new THREE.MeshStandardMaterial({ color: 0x1a1613, roughness: 1, transparent: true, vertexColors: true, depthWrite: false })),
     };
     this.kindOf = new Map([
       [this.m.concrete, 'concrete'], [this.m.concreteDark, 'concrete'], [this.m.concreteWarm, 'concrete'],
@@ -735,11 +737,29 @@ export class World {
   }
 
   crater(cx, cz, r) {
-    const g = new THREE.CircleGeometry(r, 28);
-    g.rotateX(-Math.PI / 2);
-    g.translate(cx, 0.036, cz);
-    const pos = g.attributes.position, uv = g.attributes.uv;
-    for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 3, pos.getZ(i) / 3);
+    // A stain of soot, dense in the middle and gone at the rim. A plain dark disc read as a
+    // black hole in the street.
+    const SEG = 28, rings = [[0, 0.88], [0.45, 0.84], [0.78, 0.46], [1.12, 0]];   // [share of r, density]
+    const pos = [], nor = [], col = [], uv = [], idx = [];
+    for (const [k, a] of rings) {
+      for (let i = 0; i < SEG; i++) {
+        const ang = (i / SEG) * Math.PI * 2, wobble = k > 0.5 ? 1 + 0.12 * Math.sin(ang * 3 + cx) + 0.07 * Math.sin(ang * 7 + cz) : 1;
+        const x = cx + Math.cos(ang) * r * k * wobble, z = cz + Math.sin(ang) * r * k * wobble;
+        pos.push(x, 0.036, z); nor.push(0, 1, 0); col.push(1, 1, 1, a); uv.push(x / 3, z / 3);
+      }
+    }
+    for (let j = 0; j < rings.length - 1; j++) {
+      for (let i = 0; i < SEG; i++) {
+        const a = j * SEG + i, b = j * SEG + ((i + 1) % SEG), c = a + SEG, d = b + SEG;
+        idx.push(a, b, c, b, d, c);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
     this._addGeo(this.m.scorch, g);
     // ring of chunks
     const rng = this.rng;

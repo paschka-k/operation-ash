@@ -10,8 +10,8 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
    ┌───────────┼──────────────────────────────────────────────────┐
    │ render/   │ world/          │ player/   │ weapons/  game/      │ enemies/  ui/   audio/
    │ pipeline  │ level scatter   │ controller│ viewmodel shooting   │ squad     hud   sfx
-   │ materials │ details props   │ input     │           director   │ soldier
-   │ models    │ effects         │           │                      │
+   │ materials │ details props   │ input     │ guns      director   │ soldier
+   │ models    │ effects pool    │           │ hands sculpt         │
    └───────────┴─────────────────┴───────────┴──────────────────────┴──────────────────
                                    │ только вызовы чистых функций
                                    ▼
@@ -46,17 +46,21 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
 
 | Слой | Фабрика | Что делает | Читает из ядра |
 |------|---------|-----------|----------------|
-| `render/pipeline` | `createPipeline(canvas, settings)` | рендерер, небо, каскадные тени, постобработка, пресеты качества; `prepareMaterial`, `addNoAO`, `swapForAO(full, shape)` | нет |
+| `render/pipeline` | `createPipeline(canvas, settings)` | рендерер, небо, каскадные тени, постобработка, пресеты качества; `prepareMaterial`, `addNoAO`, `swapForAO(full, shape)`; свет сцены оружия следует за камерой, `weaponSun` задаёт долю солнца на нём | нет |
 | `render/materials` | `loadTexturePack`, `getMaterial`, `pbrMaterial` | порождённые PBR-наборы; фотосканы из `assets/textures`, подогнанные таблицей `SCAN_FIT` (размер плитки, цвет, контраст) | нет |
 | `render/models` | `loadModelPack`, `getModel`, `getModelGeometry`, `getScanParts` | glTF из `assets/models`, слитые по материалу и упрощённые до бюджета треугольников; запасные примитивы | нет |
 | `world/level` | `buildLevel(scene, game)` | геометрия, коллайдеры, сетка, укрытия, точки появления; слитые сетки статики для теней и для прохода AO | `collision`, `nav`, `cover` |
 | `world/details` | `addBigProps`, `addInteriors`, `addDetails` | уличная мебель, интерьеры, детали выше глаз | `collision` |
 | `world/scatter` | `createScatter(scene, level, quality)` | тысячи мелких объектов инстансингом | нет |
-| `world/props` | `createProps(game)` | ящики, бочки, подбор предметов | `combat.explode`, `rules` |
+| `world/props` | `createProps(game)` | ящики, бочки, подбор предметов; каждый вид предмета один пул экземпляров | `combat.explode`, `rules` |
+| `world/pool` | `new InstancePool({geometry, material, proxy, gr})`, `placement()`, `lightOnly`, `writeNothing` | много копий одного предмета одним вызовом отрисовки; в теневые карты и в проход AO идёт простая форма `proxy` | нет |
 | `world/effects` | `createEffects(game)` | частицы, следы, трассеры, гильзы, свет | нет |
 | `player/controller` | `createPlayer(game)` | движение, камера, здоровье через `core/waves` | `collision`, `rules` |
 | `player/input` | `createInput(game)` | клавиатура, мышь, захват указателя, `inject()` для тестов | нет |
-| `weapons/viewmodel` | `createViewmodel(game)` | модели оружия и анимации, только вид | нет |
+| `weapons/viewmodel` | `createViewmodel(game)` | положение и анимация оружия в руках (таблица `VIEW`), доля солнца на оружии; только вид | `collision.lineOfSight` |
+| `weapons/guns` | `buildPistol`, `buildRifle`, `buildShotgun` → `{root, parts}` | формы трёх оружий: части `body`, `slide`, `mag`, `pump`, `rightArm`, `leftArm`, `glass` | нет |
+| `weapons/sculpt` | `new Sculpt()`: `prism`, `frame`, `lathe`, `box`, `cyl`, `mesh`; `PAINT`, `weaponMaterials()` | детали по контуру вида сбоку, токарные детали, покраска по вершинам, одна сетка на часть; два общих материала с порождёнными текстурами | нет |
+| `weapons/hands` | `addArm`, `handAt`, `cradleAt`, `GRIP` | кисть в перчатке с пальцами из трёх фаланг и рукав; хват задаётся углами | нет |
 | `game/shooting` | `new Shooting(game)` | ввод → арсенал ядра → выстрел → эффекты | `weapons`, `combat` |
 | `game/director` | `new Director(game)` | события волн → появление ботов, баннеры, звук | `waves` |
 | `enemies/squad` | `createSquad(game)` | тело, анимация и выстрел бота вокруг `core/ai` | `ai`, `combat`, `cover` |

@@ -1,9 +1,14 @@
 // Dynamic props: destructible crates, explosive barrels (chain reactions),
-// and health / ammo pickups. Static scenery is built in world.js.
+// and health / ammo pickups. Static scenery is built in level.js.
+//
+// Every kind of prop is one pool of copies (pool.js): all crates are a single draw call,
+// and the shadow maps see a box per crate instead of the scanned model.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeBox, clamp } from '../core/collision.js';
-import { getModel } from '../render/models.js';
+import { getModelGeometry } from '../render/models.js';
+import { InstancePool, placement } from './pool.js';
 import { explode } from '../core/combat.js';
 import { MAP_HALF } from '../config.js';
 import { CRATE_HP, BARREL_HP, EXPLOSION, PICKUP, applyMedkit } from '../core/rules.js';
@@ -20,18 +25,53 @@ export class Props {
     this.time = 0;
     this.root = new THREE.Group();
     game.gr.scene.add(this.root);
-    this.husk = [this.world.m.metalChar, this.world.m.metalChar];
+    this._buildPools();
     this._buildPickupMeshes();
   }
 
   get world() { return this.game.world; }
 
   // -------------------------------------------------------- construction
+  /** One pool per kind of prop: crates, barrels, and the burnt husks barrels leave behind. */
+  _buildPools() {
+    const gr = this.game.gr;
+    const prepare = (m) => { for (const one of Array.isArray(m) ? m : [m]) gr.prepareMaterial(one); };
+    // shapes for the shadow maps and the ambient occlusion pass, a little inside the models
+    const crateShape = new THREE.BoxGeometry(0.96, 0.96, 0.96).translate(0, 0.5, 0);
+    const barrelShape = new THREE.CylinderGeometry(0.285, 0.285, 0.88, 12).translate(0, 0.45, 0);
+    const crate = getModelGeometry('crate'), barrel = getModelGeometry('barrel');
+    const charred = this.world.m.metalChar;
+    const husk = Array.isArray(barrel.material) ? barrel.material.map(() => charred) : charred;
+    prepare(crate.material); prepare(barrel.material); prepare(charred);
+    this.pools = {
+      crate: new InstancePool({ geometry: crate.geometry, material: crate.material, proxy: crateShape, gr, capacity: 96 }),
+      barrel: new InstancePool({ geometry: barrel.geometry, material: barrel.material, proxy: barrelShape, gr, capacity: 64 }),
+      husk: new InstancePool({ geometry: barrel.geometry, material: husk, proxy: barrelShape, gr, capacity: 64 }),
+    };
+    for (const pool of Object.values(this.pools)) this.root.add(pool.group);
+  }
+
+  /** A pickup is a few boxes painted per vertex: one geometry and one material for both kinds. */
+  _pickupGeometry(parts) {
+    const geos = parts.map(([w, h, d, color, y = 0]) => {
+      const g = new THREE.BoxGeometry(w, h, d).translate(0, y, 0);
+      const c = new THREE.Color(color), n = g.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      return g;
+    });
+    return mergeGeometries(geos, false);
+  }
+
   _buildPickupMeshes() {
-    const white = new THREE.MeshStandardMaterial({ color: 0xe6e6e0, roughness: 0.5 });
-    const red = new THREE.MeshStandardMaterial({ color: 0xd22a22, roughness: 0.5, emissive: 0x551008, emissiveIntensity: 0.6 });
-    const olive = new THREE.MeshStandardMaterial({ color: 0x59633c, roughness: 0.7, metalness: 0.2 });
-    const yellow = new THREE.MeshStandardMaterial({ color: 0xd6b020, roughness: 0.6, emissive: 0x443300, emissiveIntensity: 0.5 });
+    const gr = this.game.gr;
+    const paint = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.1 });
+    gr.prepareMaterial(paint);
+    const WHITE = 0xe6e6e0, RED = 0xe02a20, OLIVE = 0x59633c, YELLOW = 0xe0b820;
+    const shapes = {
+      health: this._pickupGeometry([[0.4, 0.15, 0.28, WHITE], [0.2, 0.02, 0.06, RED, 0.081], [0.06, 0.02, 0.2, RED, 0.081]]),
+      ammo: this._pickupGeometry([[0.36, 0.2, 0.24, OLIVE], [0.1, 0.205, 0.245, YELLOW], [0.37, 0.03, 0.25, OLIVE, 0.1]]),
+    };
     // the light column fades out upwards: a gradient in the alpha of a tiny texture
     const fadeCanvas = document.createElement('canvas');
     fadeCanvas.width = 4; fadeCanvas.height = 64;
@@ -43,10 +83,21 @@ export class Props {
     const beam = (color) => new THREE.MeshBasicMaterial({ color, map: fade, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
     const beamHealth = beam(0xff5a4a);
     const beamAmmo = beam(0xffc94a);
-    this.pickupMats = { white, red, olive, yellow, beamHealth, beamAmmo };
-    for (const m of [white, red, olive, yellow]) this.game.gr.prepareMaterial(m);
+    this.pickupMats = { paint, beamHealth, beamAmmo };
     this.beamGeo = new THREE.CylinderGeometry(0.17, 0.17, 2.8, 16, 1, true);
     this.beamGeo.translate(0, 1.4, 0);
+    // small floating things: they cast a shadow but are left out of the ambient occlusion pass
+    const item = (geometry) => new InstancePool({ geometry, material: paint, gr, capacity: 48, receiveShadow: false, occlude: false });
+    const column = (material) => {
+      const pool = new InstancePool({ geometry: this.beamGeo, material, gr, capacity: 48, castShadow: false, receiveShadow: false, occlude: false });
+      pool.detail.renderOrder = 9;
+      return pool;
+    };
+    this.pickupPools = {
+      health: { item: item(shapes.health), beam: column(beamHealth) },
+      ammo: { item: item(shapes.ammo), beam: column(beamAmmo) },
+    };
+    for (const p of Object.values(this.pickupPools)) this.root.add(p.item.group, p.beam.group);
   }
 
   /** Is there room for a prop of radius r at x,z? */
@@ -64,14 +115,9 @@ export class Props {
   }
 
   addCrate(x, z, size = 1, y = 0) {
-    const mesh = getModel('crate');
-    mesh.scale.setScalar(size);
-    mesh.position.set(x, y, z);
-    mesh.rotation.y = (rnd() - 0.5) * 0.08;
-    this.root.add(mesh);
-    mesh.updateMatrixWorld(true);
-    mesh.traverse((o) => { if (o.isMesh) this.game.gr.prepareMaterial(o.material); });
-    const crate = { type: 'crate', hp: CRATE_HP, mesh, size, alive: true };
+    const rot = (rnd() - 0.5) * 0.08;
+    const crate = { type: 'crate', hp: CRATE_HP, size, alive: true, x, y, z, rot };
+    crate.copy = this.pools.crate.add(placement(x, y, z, 0, rot, 0, size));
     const box = makeBox(x, y + size / 2, z, size, size, size, { kind: 'wood', owner: crate });
     crate.box = box;
     this.world.addCollider(box);
@@ -80,12 +126,9 @@ export class Props {
   }
 
   addBarrel(x, z, explosive = true) {
-    const mesh = getModel('barrel');
-    mesh.position.set(x, 0, z);
-    mesh.rotation.y = rnd() * 6.28;
-    this.root.add(mesh);
-    mesh.traverse((o) => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) this.game.gr.prepareMaterial(m); });
-    const barrel = { type: 'barrel', hp: BARREL_HP, mesh, alive: true, explosive, x, z };
+    const rot = rnd() * 6.28;
+    const barrel = { type: 'barrel', hp: BARREL_HP, alive: true, explosive, x, z, rot };
+    barrel.copy = this.pools.barrel.add(placement(x, 0, z, 0, rot, 0));
     const box = makeBox(x, 0.45, z, 0.6, 0.9, 0.6, { kind: 'metal', owner: barrel });
     barrel.box = box;
     this.world.addCollider(box);
@@ -103,7 +146,7 @@ export class Props {
     owner.hp -= amount;
     if (owner.type === 'crate') {
       // visual shake on hit
-      owner.mesh.position.x += (rnd() - 0.5) * 0.01;
+      this.pools.crate.set(owner.copy, placement(owner.x + (rnd() - 0.5) * 0.012, owner.y, owner.z, 0, owner.rot, 0, owner.size));
       if (owner.hp <= 0) this.breakCrate(owner);
     } else if (owner.type === 'barrel') {
       if (owner.hp <= 0) this.blowBarrel(owner);
@@ -114,10 +157,10 @@ export class Props {
   breakCrate(c, quiet = false) {
     if (!c.alive) return;
     c.alive = false;
-    const p = c.mesh.position;           // the model stands on this point
+    const p = c;                         // the model stands on this point
     const cy = p.y + c.size / 2;
     this.world.removeCollider(c.box);
-    this.root.remove(c.mesh);
+    this.pools.crate.remove(c.copy);
     const fx = this.game.fx;
     for (let i = 0; i < 5; i++) {
       fx.impact('wood', p.x + (rnd() - 0.5) * c.size * 0.7, cy + (rnd() - 0.2) * c.size * 0.5, p.z + (rnd() - 0.5) * c.size * 0.7, 0, 1, 0, false);
@@ -141,11 +184,9 @@ export class Props {
       g.audio.explosion(x, 0.5, z);
       this.explode(x, 0.6, z, EXPLOSION.radius, EXPLOSION.damage, 'barrel');
       // charred husk lying on its side
-      b.mesh.traverse((o) => { if (o.isMesh) o.material = Array.isArray(o.material) ? this.husk : this.husk[0]; });
-      b.mesh.rotation.z = (rnd() < 0.5 ? 1 : -1) * (1.2 + rnd() * 0.3);
-      b.mesh.position.y = 0.28;
-      b.mesh.position.x += (rnd() - 0.5) * 0.8;
-      b.mesh.position.z += (rnd() - 0.5) * 0.8;
+      this.pools.barrel.remove(b.copy);
+      const roll = (rnd() < 0.5 ? 1 : -1) * (1.2 + rnd() * 0.3);
+      b.copy = this.pools.husk.add(placement(x + (rnd() - 0.5) * 0.8, 0.28, z + (rnd() - 0.5) * 0.8, 0, b.rot, roll));
       g.fx.fire(x, 0.1, z, 0.7, 6 + rnd() * 5, false);
     };
     if (delay > 0) this.timers.push({ t: delay, fn: go });
@@ -167,8 +208,7 @@ export class Props {
     }
     for (const c of this.crates) {
       if (!c.alive) continue;
-      const p = c.mesh.position;
-      const d = Math.hypot(p.x - x, p.z - z);
+      const d = Math.hypot(c.x - x, c.z - z);
       if (d < radius * 0.8) this.breakCrate(c);
     }
     // bots: core/combat works out who is hurt and how much, here we apply it
@@ -194,35 +234,24 @@ export class Props {
    * comes back that many seconds after it was taken.
    */
   spawnPickup(type, x, z, y = 0, life = 0, respawn = 0, animate = false) {
-    const M = this.pickupMats;
-    const g = new THREE.Group();
-    if (type === 'health') {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, 0.28), M.white);
-      const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.06), M.red);
-      const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.2), M.red);
-      c1.position.y = c2.position.y = 0.081;
-      g.add(box, c1, c2);
-    } else {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.24), M.olive);
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.205, 0.245), M.yellow);
-      const lid = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.03, 0.25), M.olive);
-      lid.position.y = 0.1;
-      g.add(box, stripe, lid);
-    }
-    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
-    const holder = new THREE.Group();
-    holder.add(g);
-    const beam = new THREE.Mesh(this.beamGeo, type === 'health' ? M.beamHealth : M.beamAmmo);
-    beam.renderOrder = 9;
-    beam.position.y = -0.4;
-    holder.add(beam);
-    this.game.gr.addNoAO(beam);
-    holder.position.set(x, y + 0.45, z);
-    this.root.add(holder);
-    const p = { type, holder, inner: g, beam, x, z, y, born: this.time, life, respawn, t0: rnd() * 6, appear: animate ? 0 : 1 };
-    if (animate) holder.scale.setScalar(0.01);
+    const pools = this.pickupPools[type === 'health' ? 'health' : 'ammo'];
+    const p = { type, x, z, y, born: this.time, life, respawn, t0: rnd() * 6, appear: animate ? 0 : 1, near: 1 };
+    p.item = pools.item.add(placement(x, y + 0.45, z));
+    p.beam = pools.beam.add(placement(x, y + 0.05, z));
+    this._placePickup(p);
     this.pickups.push(p);
     return p;
+  }
+
+  /** Where a pickup is right now: it bobs, turns, grows in when it appears, and its light column narrows up close. */
+  _placePickup(p) {
+    const pools = this.pickupPools[p.type === 'health' ? 'health' : 'ammo'];
+    const t = this.time + p.t0;
+    const e = 1 - (1 - p.appear) ** 3;
+    const s = p.appear < 1 ? Math.max(0.01, e * (1 + 0.25 * Math.sin(p.appear * Math.PI))) : 1;
+    const y = p.y + 0.45 + Math.sin(t * 2.2) * 0.06;
+    pools.item.set(p.item, placement(p.x, y, p.z, 0, t * 1.4, 0, s));
+    pools.beam.set(p.beam, placement(p.x, y - 0.4 * s, p.z, 0, 0, 0, p.near * s, s, p.near * s));
   }
 
   _collect(p, i) {
@@ -246,11 +275,11 @@ export class Props {
     return true;
   }
 
-  /** Take a pickup out of the scene and free what it owns (the shared light column geometry stays). */
+  /** Take a pickup out of the scene. */
   _dropPickup(p) {
-    this.root.remove(p.holder);
-    this.game.gr.removeNoAO(p.beam);
-    p.holder.traverse((o) => { if (o.isMesh && o.geometry !== this.beamGeo) o.geometry.dispose(); });
+    const pools = this.pickupPools[p.type === 'health' ? 'health' : 'ammo'];
+    pools.item.remove(p.item);
+    pools.beam.remove(p.beam);
   }
 
   /** Bring back every fixed supply point that is still waiting to respawn. */
@@ -281,18 +310,11 @@ export class Props {
     this.pickupMats.beamAmmo.opacity = out ? 0.3 + 0.16 * Math.sin(this.time * 6) : 0.14;
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const p = this.pickups[i];
-      const t = this.time + p.t0;
-      p.holder.position.y = p.y + 0.45 + Math.sin(t * 2.2) * 0.06;
-      p.inner.rotation.y = t * 1.4;
       // the light column is a far away marker: it narrows to a thread when you get close
       const cdx = cam.position.x - p.x, cdz = cam.position.z - p.z;
-      const near = Math.min(1, Math.max(0.12, (Math.hypot(cdx, cdz) - 1.5) / 7));
-      p.beam.scale.set(near, 1, near);
-      if (p.appear < 1) {
-        p.appear = Math.min(1, p.appear + dt * 1.8);
-        const e = 1 - (1 - p.appear) ** 3;
-        p.holder.scale.setScalar(Math.max(0.01, e * (1 + 0.25 * Math.sin(p.appear * Math.PI))));
-      }
+      p.near = Math.min(1, Math.max(0.12, (Math.hypot(cdx, cdz) - 1.5) / 7));
+      if (p.appear < 1) p.appear = Math.min(1, p.appear + dt * 1.8);
+      this._placePickup(p);
       if (p.life > 0 && this.time - p.born > p.life) {
         this._dropPickup(p);
         this.pickups.splice(i, 1);
@@ -306,13 +328,12 @@ export class Props {
 
   /** Remove everything dynamic. world._places() recreates it. */
   clear() {
-    // removeCollider is safe to call twice, and a barrel waiting for its chain explosion is already not alive
-    // Geometry is freed too: primitive crates and barrels build their own. A shared glTF geometry
-    // is simply uploaded again the next time it is drawn.
-    const free = (mesh) => mesh.traverse((o) => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
-    for (const c of this.crates) { this.world.removeCollider(c.box); this.root.remove(c.mesh); free(c.mesh); }
-    for (const b of this.barrels) { this.world.removeCollider(b.box); this.root.remove(b.mesh); free(b.mesh); }
-    for (const p of this.pickups) this._dropPickup(p);
+    // removeCollider is safe to call twice, and a barrel waiting for its chain explosion is already not alive.
+    // The pools keep their geometry: the next game fills them again.
+    for (const c of this.crates) this.world.removeCollider(c.box);
+    for (const b of this.barrels) this.world.removeCollider(b.box);
+    for (const pool of Object.values(this.pools)) pool.clear();
+    for (const p of Object.values(this.pickupPools)) { p.item.clear(); p.beam.clear(); }
     this.crates.length = 0; this.barrels.length = 0; this.pickups.length = 0; this.timers.length = 0;
   }
 }

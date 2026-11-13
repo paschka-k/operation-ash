@@ -98,7 +98,8 @@ export function createScatter(scene, level, quality = 'medium', seed = 4242) {
   const paperGeo = new THREE.PlaneGeometry(0.21, 0.297); paperGeo.rotateX(-Math.PI / 2);
   make(paperGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, side: THREE.DoubleSide }), 650,
     (d) => { d.position.y = 0.012 + rng() * 0.02; d.rotation.x = (rng() - 0.5) * 0.25; d.rotation.z = (rng() - 0.5) * 0.25; },
-    () => new THREE.Color().setHSL(0.1 + rng() * 0.05, 0.1 + rng() * 0.2, 0.55 + rng() * 0.35));
+    // dirty paper: clean white sheets glowed against the dark road
+    () => new THREE.Color().setHSL(0.1 + rng() * 0.05, 0.1 + rng() * 0.2, 0.28 + rng() * 0.22));
 
   // cans and bottles
   make(new THREE.CylinderGeometry(0.033, 0.033, 0.115, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.85 }), 230,

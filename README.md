@@ -50,7 +50,9 @@ Unreal Engine 5 quality (Nanite, Lumen, scanned assets everywhere) is not reacha
 
 Enemy soldiers are one skinned mesh each (about five thousand triangles, twelve bones): helmet, glasses, plate carrier with pouches, pack, camouflage from a generated texture, a rifle or pistol held by solved arm poses. They are still built from simple shapes, not sculpted or scanned.
 
-Photoscans (see below) replace eight surfaces and five props when their files are present. That moves walls, roads and crates much closer to a photograph, but the buildings, the weapons and the soldiers are still modelled from simple shapes.
+The weapons in hand are cut from side-view outlines and turned profiles instead of boxes: a pistol with a moving slide, a carbine with a slotted handguard, a rail, a curved magazine and a holographic sight you look through, a pump shotgun with spare shells on the receiver. Gloved hands have jointed fingers and camouflage sleeves. A weapon is four or five draw calls. Its light follows the world: the sun and the reflected sky turn as you turn, and the sun leaves the weapon when you step into shade. They are still modelled by code, not sculpted or scanned.
+
+Photoscans (see below) replace eight surfaces and five props when their files are present. That moves walls, roads and crates much closer to a photograph, but the buildings and the soldiers are still modelled from simple shapes.
 
 ## Optional photoscans (CC0, Poly Haven)
 
@@ -88,9 +90,9 @@ The switch "Photoscanned textures and models" in the settings, or `?noscans` in 
 ```
 src/core      pure rules, the only test seam (no three, DOM, window)
 src/render    renderer, sky, shadows, post processing, materials, model loader
-src/world     level, interiors, scatter, props, effects
+src/world     level, interiors, scatter, props (pools of instances), effects
 src/player    controller, input
-src/weapons   weapon models and animation
+src/weapons   weapon shapes (sculpt, hands, guns) and their animation (viewmodel)
 src/game      shooting, wave director
 src/enemies   bot bodies around core AI
 src/ui        HUD and menus

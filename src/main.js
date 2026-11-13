@@ -396,8 +396,8 @@ class Game {
     };
     const items = this.world.items;
     for (let i = 0; i < items.length; i += 3) test(items[i], items[i + 1], items[i + 2]);
-    for (const c of this.props.crates) if (c.alive) test(c.mesh.position.x, c.mesh.position.y + c.size / 2, c.mesh.position.z);
-    for (const b of this.props.barrels) test(b.mesh.position.x, 0.45, b.mesh.position.z);
+    for (const c of this.props.crates) if (c.alive) test(c.x, c.y + c.size / 2, c.z);
+    for (const b of this.props.barrels) test(b.x, 0.45, b.z);
     for (const p of this.props.pickups) test(p.x, p.y + 0.4, p.z);
     return n;
   }
