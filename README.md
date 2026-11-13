@@ -2,10 +2,13 @@
 
 A first-person shooter in the style of Call of Duty, set in a ruined city block. It runs in the browser on Three.js (WebGL2). No engine install, no account, no network.
 
+**Play online: https://paschka-k.github.io/operation-ash/**
+
 ![in game](.autopilot/final-screenshot.jpg)
 
 ## Play
 
+- Open the link above, or
 - Double-click `dist/game.html` (one file, about 1 MB, everything inside), or
 - `npm install` then `npm start` and open http://localhost:5174.
 
