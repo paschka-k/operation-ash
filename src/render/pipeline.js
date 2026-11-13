@@ -132,6 +132,7 @@ export class GameRenderer {
     this.qualityName = settings.quality;
     this.q = QUALITY[this.qualityName];
     this.noAO = new Set();
+    this.aoSwaps = [];
     this.width = window.innerWidth;
     this.height = window.innerHeight;
 
@@ -332,7 +333,9 @@ export class GameRenderer {
       gtao.render = (...args) => {
         const hidden = [];
         for (const o of this.noAO) if (o.visible) { o.visible = false; hidden.push(o); }
+        for (const s of this.aoSwaps) { s.full.visible = false; s.shape.visible = true; }
         baseRender(...args);
+        for (const s of this.aoSwaps) { s.full.visible = true; s.shape.visible = false; }
         for (const o of hidden) o.visible = true;
       };
       composer.addPass(gtao);
@@ -525,6 +528,13 @@ varying float vMacroUp;`)
   /** Register a mesh that must not appear in the ambient occlusion normal pass. */
   addNoAO(obj) { this.noAO.add(obj); }
   removeNoAO(obj) { this.noAO.delete(obj); }
+
+  /**
+   * In the ambient occlusion pass draw `shape` in place of `full`. That pass renders depth and
+   * normals with a single material, so many meshes can be stood in for by one merged mesh.
+   * `shape` is hidden everywhere else.
+   */
+  swapForAO(full, shape) { shape.visible = false; this.aoSwaps.push({ full, shape }); }
 
   get uniforms() { return this.grade.uniforms; }
 

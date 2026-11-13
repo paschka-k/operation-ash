@@ -1,135 +1,18 @@
-// Enemy soldiers: procedural model and animation, hit zones, and AI that
-// sees, hears, finds paths around buildings, hides behind cover, peeks out
-// with a short aim warning and shoots in bursts. Accuracy depends on what the
-// player is doing, difficulty rises through three tiers.
+// Enemy soldiers: animation, hit zones, and AI that sees, hears, finds paths
+// around buildings, hides behind cover, peeks out with a short aim warning and
+// shoots in bursts. Accuracy depends on what the player is doing, difficulty
+// rises through three tiers. The figure itself is built in soldier.js.
 
-import * as THREE from 'three';
 import { stepBody, standingHeight, raycast, clamp, damp } from '../core/collision.js';
 import { createEnemy, thinkEnemy, enemyHurt, hearNoise, alertNearby, ENEMY_TYPES, enemyParams, botHitChance } from '../core/ai.js';
 import { applyDamage, rayTargets } from '../core/combat.js';
 import { waveComposition, waveTier } from '../core/rules.js';
+import { buildSoldier, MUZZLE } from './soldier.js';
 
 export { ENEMY_TYPES, enemyParams };
 
 const rnd = Math.random;
 const rr = (a, b) => a + (b - a) * rnd();
-
-// ------------------------------------------------------------- model parts
-const GEO = {};
-function geo() {
-  if (GEO.ready) return GEO;
-  const box = (w, h, d, x = 0, y = 0, z = 0) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); return g; };
-  GEO.torso = box(0.4, 0.5, 0.24, 0, 0.27, 0);
-  GEO.vest = box(0.44, 0.34, 0.28, 0, 0.3, 0.005);
-  GEO.pack = box(0.3, 0.34, 0.12, 0, 0.3, -0.19);
-  GEO.pelvis = box(0.34, 0.2, 0.22, 0, 0, 0);
-  GEO.head = new THREE.SphereGeometry(0.105, 14, 10);
-  const helmet = new THREE.SphereGeometry(0.128, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.62);
-  helmet.translate(0, 0.012, 0);
-  GEO.helmet = helmet;
-  GEO.upperArm = box(0.095, 0.3, 0.095, 0, -0.15, 0);
-  GEO.foreArm = box(0.085, 0.28, 0.085, 0, -0.14, 0);
-  GEO.hand = box(0.08, 0.08, 0.09, 0, -0.3, 0);
-  GEO.upperLeg = box(0.16, 0.46, 0.17, 0, -0.23, 0);
-  GEO.lowerLeg = box(0.14, 0.46, 0.15, 0, -0.23, 0);
-  GEO.boot = box(0.15, 0.1, 0.27, 0, -0.48, 0.04);
-  GEO.rifleBody = box(0.06, 0.1, 0.5, 0, 0, 0.1);
-  GEO.rifleBarrel = box(0.025, 0.025, 0.3, 0, 0.02, 0.5);
-  GEO.rifleStock = box(0.05, 0.1, 0.2, 0, -0.01, -0.22);
-  GEO.rifleMag = box(0.04, 0.16, 0.06, 0, -0.12, 0.08);
-  GEO.pistolBody = box(0.04, 0.08, 0.2, 0, 0, 0.1);
-  GEO.pistolGrip = box(0.04, 0.12, 0.05, 0, -0.08, 0.02);
-  GEO.ready = true;
-  return GEO;
-}
-
-const MAT_CACHE = new Map();
-function mats(type) {
-  if (MAT_CACHE.has(type)) return MAT_CACHE.get(type);
-  const t = ENEMY_TYPES[type];
-  const m = {
-    uniform: new THREE.MeshStandardMaterial({ color: t.uniform, roughness: 0.92, metalness: 0 }),
-    vest: new THREE.MeshStandardMaterial({ color: t.vest, roughness: 0.85, metalness: 0.05 }),
-    helmet: new THREE.MeshStandardMaterial({ color: t.helmet, roughness: 0.6, metalness: 0.15 }),
-    skin: new THREE.MeshStandardMaterial({ color: t.skin, roughness: 0.7 }),
-    gun: new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.4, metalness: 0.9 }),
-    boot: new THREE.MeshStandardMaterial({ color: 0x16130f, roughness: 0.8 }),
-  };
-  MAT_CACHE.set(type, m);
-  return m;
-}
-
-function buildSoldier(type) {
-  const G = geo(), M = mats(type), T = ENEMY_TYPES[type];
-  const mesh = (g, m) => { const o = new THREE.Mesh(g, m); o.castShadow = true; o.receiveShadow = false; return o; };
-  const root = new THREE.Group();
-  root.scale.setScalar(T.scale);
-  const hips = new THREE.Group();
-  hips.position.y = 0.93;
-  root.add(hips);
-  hips.add(mesh(G.pelvis, M.uniform));
-
-  const legs = [];
-  for (const sx of [-1, 1]) {
-    const hip = new THREE.Group();
-    hip.position.set(sx * 0.1, 0, 0);
-    hip.add(mesh(G.upperLeg, M.uniform));
-    const knee = new THREE.Group();
-    knee.position.y = -0.46;
-    knee.add(mesh(G.lowerLeg, M.uniform));
-    knee.add(mesh(G.boot, M.boot));
-    hip.add(knee);
-    hips.add(hip);
-    legs.push({ hip, knee });
-  }
-
-  const torso = new THREE.Group();
-  torso.position.y = 0.06;
-  hips.add(torso);
-  torso.add(mesh(G.torso, M.uniform));
-  torso.add(mesh(G.vest, M.vest));
-  torso.add(mesh(G.pack, M.vest));
-
-  const head = new THREE.Group();
-  head.position.set(0, 0.62, 0.01);
-  head.add(mesh(G.head, M.skin));
-  head.add(mesh(G.helmet, M.helmet));
-  torso.add(head);
-
-  const arms = [];
-  for (const sx of [-1, 1]) {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(sx * 0.255, 0.47, 0);
-    shoulder.add(mesh(G.upperArm, M.uniform));
-    const elbow = new THREE.Group();
-    elbow.position.y = -0.3;
-    elbow.add(mesh(G.foreArm, M.uniform));
-    elbow.add(mesh(G.hand, M.skin));
-    shoulder.add(elbow);
-    torso.add(shoulder);
-    arms.push({ shoulder, elbow });
-  }
-
-  const gun = new THREE.Group();
-  if (T.weapon === 'rifle') {
-    gun.add(mesh(G.rifleBody, M.gun), mesh(G.rifleBarrel, M.gun), mesh(G.rifleStock, M.gun), mesh(G.rifleMag, M.gun));
-    gun.position.set(0.1, 0.3, 0.25);
-  } else {
-    gun.add(mesh(G.pistolBody, M.gun), mesh(G.pistolGrip, M.gun));
-    gun.position.set(0.09, 0.33, 0.28);
-  }
-  torso.add(gun);
-
-  arms[1].shoulder.rotation.set(-1.15, 0.05, 0.12);
-  arms[1].elbow.rotation.set(-0.7, 0, 0);
-  arms[0].shoulder.rotation.set(-1.25, -0.2, -0.28);
-  arms[0].elbow.rotation.set(-0.55, 0, 0);
-  if (T.weapon !== 'rifle') {
-    arms[0].shoulder.rotation.set(-1.25, 0.1, 0.1);
-    arms[0].elbow.rotation.set(-0.5, 0.3, 0);
-  }
-  return { root, hips, legs, torso, head, arms, gun };
-}
 
 // --------------------------------------------------------------------- Enemy
 // One bot in the scene. The decisions come from core/ai (thinkEnemy), this class
@@ -144,10 +27,9 @@ class Enemy {
     core.height = 1.8 * core.scale;
     core.onGround = true;
     this.model = buildSoldier(core.type);
-    for (const m of Object.values(mats(core.type))) game.gr.prepareMaterial(m);
+    game.gr.prepareMaterial(this.model.material);
     this.model.root.position.set(core.x, 0, core.z);
     game.gr.scene.add(this.model.root);
-    game.gr.addNoAO(this.model.root); // dozens of small moving parts: not worth a second pass for ambient occlusion
     this.walkPhase = rnd() * 6;
     this.deathT = 0;
     this.deathDir = rnd() < 0.7 ? -1 : 1;
@@ -212,11 +94,11 @@ class Enemy {
   muzzlePos() {
     const c = this.core, s = c.scale, y = c.yaw;
     const sy = Math.sin(y), cy = Math.cos(y);
-    const len = (c.T.weapon === 'rifle' ? 0.82 : 0.5) * s;
+    const m = MUZZLE[c.T.weapon] || MUZZLE.rifle;
     return {
-      x: c.x + sy * len + cy * 0.12 * s,
-      y: c.y + (1.4 - 0.45 * c.crouch) * s,
-      z: c.z + cy * len - sy * 0.12 * s,
+      x: c.x + (sy * m.fwd + cy * m.side) * s,
+      y: c.y + (m.up - 0.45 * c.crouch) * s,
+      z: c.z + (cy * m.fwd - sy * m.side) * s,
     };
   }
 
@@ -280,7 +162,7 @@ class Enemy {
 
   // -------------------------------------------------------------- animation
   animate(dt) {
-    const M = this.model, c = this.core, T = c.T;
+    const M = this.model, c = this.core;
     const sp = c.speedNow;
     if (sp > 0.3) this.walkPhase += dt * (3.0 + sp * 1.55);
     const amp = clamp(sp / 3.6, 0, 1.3);
@@ -295,7 +177,7 @@ class Enemy {
     // a hit jolts the torso back for a moment
     M.torso.rotation.x = 0.06 + amp * 0.08 + ck * 0.25 - Math.min(c.flinch, 0.18) * 1.6;
     const sinceShot = (this.game.time * 1000 - c.lastFiredAt) / 1000;
-    M.gun.position.z = (T.weapon === 'rifle' ? 0.25 : 0.28) - (sinceShot < 0.08 ? 0.03 : 0);
+    M.gun.position.copy(M.gunRest).addScaledVector(M.gunBack, sinceShot < 0.08 ? 0.03 : 0);
     M.root.position.set(c.x, c.y, c.z);
     M.root.rotation.y = c.yaw;
   }
@@ -360,6 +242,14 @@ export class Enemies {
     this.cores = [];          // the core/ai bots, also the targets for core/combat
     this.budget = { path: 0, cover: 0 };
     this._eye = { x: 0, y: 0, z: 0 };
+    // One hidden soldier of each type: its camouflage texture, geometry and shader get built with
+    // the level, so the first bot of a wave does not stall a frame in the middle of a fight.
+    for (const type of Object.keys(ENEMY_TYPES)) {
+      const m = buildSoldier(type);
+      game.gr.prepareMaterial(m.material);
+      m.root.visible = false;
+      game.gr.scene.add(m.root);
+    }
   }
 
   /** Targets for core/combat: the living and dead bots (dead ones are skipped there). */
@@ -412,7 +302,7 @@ export class Enemies {
       e.update(dt, world, now);
       if (e.remove) {
         this.game.gr.scene.remove(e.model.root);
-        this.game.gr.removeNoAO(e.model.root);
+        e.model.dispose();
         this.list.splice(i, 1);
         const k = this.cores.indexOf(e.core);
         if (k >= 0) this.cores.splice(k, 1);
@@ -430,7 +320,7 @@ export class Enemies {
   }
 
   clear() {
-    for (const e of this.list) { this.game.gr.scene.remove(e.model.root); this.game.gr.removeNoAO(e.model.root); }
+    for (const e of this.list) { this.game.gr.scene.remove(e.model.root); e.model.dispose(); }
     this.list.length = 0;
     this.cores.length = 0;
   }

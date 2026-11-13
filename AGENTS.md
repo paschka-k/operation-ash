@@ -23,6 +23,8 @@ npm run models -- --dry
 - A new weapon is one row in `WEAPON_SPECS` plus an entry in `WEAPON_ORDER`, and a model in `src/weapons/viewmodel.js`.
 - Every scene material must go through the renderer's `prepareMaterial`, otherwise it gets no cascaded shadows.
 - Static level geometry is merged per material and per 30 m map chunk (`World._flush`). Do not create one mesh per prop.
+- The same flush builds one shadow-only mesh and one shape for the ambient occlusion pass out of all static geometry. Static geometry added outside the batches gets no shadow and no occlusion, so add it through `box`, `_addGeo` and friends before the flush.
+- A bot is one skinned mesh (`src/enemies/soldier.js`). Add gear as parts of that mesh, not as separate meshes.
 - Never download anything without the user's explicit consent. Photoscans are fetched only by `tools/fetch-*.mjs`, which the user runs.
 - Process source of truth: `.autopilot/data.mjs`. After editing it run `npm run dashboard`. Do not hand-edit `manifest.md`, `spec.md`, `state.json` or `dashboard.html`.
 

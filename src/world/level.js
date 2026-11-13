@@ -50,6 +50,53 @@ function bakeCylinderGeometry(rt, rb, h, seg, cx, cy, cz, rx, rz, texW, texH) {
   return g;
 }
 
+/**
+ * The triangles of many geometries as one mesh without materials: positions, and normals when
+ * asked. The shadow pass and the ambient occlusion pass do not look at materials, so for them
+ * the whole static level can be one draw call instead of one per material and map chunk.
+ */
+function mergedShape(geos, withNormals, side = THREE.FrontSide) {
+  let count = 0;
+  for (const g of geos) count += g.index ? g.index.count : g.attributes.position.count;
+  const pos = new Float32Array(count * 3), nor = withNormals ? new Float32Array(count * 3) : null;
+  let o = 0;
+  for (const g of geos) {
+    const p = g.attributes.position, nn = g.attributes.normal, idx = g.index;
+    const n = idx ? idx.count : p.count;
+    for (let i = 0; i < n; i++, o += 3) {
+      const k = idx ? idx.getX(i) : i;
+      pos[o] = p.getX(k); pos[o + 1] = p.getY(k); pos[o + 2] = p.getZ(k);
+      if (nor) { nor[o] = nn.getX(k); nor[o + 1] = nn.getY(k); nor[o + 2] = nn.getZ(k); }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  if (nor) geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  // Both passes that use these meshes bring their own material. This one writes nothing, so a
+  // shape that ever did reach the colour pass would cost a draw call and show nothing.
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side, colorWrite: false, depthWrite: false }));
+  mesh.matrixAutoUpdate = false;
+  mesh.receiveShadow = false;
+  return mesh;
+}
+
+/**
+ * One mesh that only exists in the shadow maps. The low sun makes every cascade's light box
+ * sweep the whole block, so each cascade used to redraw every chunk of every material: about
+ * 1100 draw calls for 47 thousand triangles.
+ * A directional light looks through an orthographic frustum, the player's camera through a
+ * perspective one. This mesh answers the frustum test only for the first kind, so the colour
+ * and ambient occlusion passes never see it.
+ */
+function shadowCaster(geos, side) {
+  const mesh = mergedShape(geos, false, side);
+  mesh.name = 'shadowCaster';
+  mesh.castShadow = true;
+  // left and right planes of an orthographic frustum face exactly away from each other
+  mesh.intersectsFrustum = (frustum) => frustum.planes[0].normal.dot(frustum.planes[1].normal) < -0.9999;
+  return mesh;
+}
+
 export class World {
   constructor(game) {
     this.game = game;
@@ -137,6 +184,9 @@ export class World {
   _flush() {
     const CHUNK = 30;
     this.chunks = 0;
+    const casters = new Map();   // material side -> geometries that cast a plain shadow
+    const solids = [];           // everything opaque, for the ambient occlusion pass
+    const chunks = new THREE.Group();
     for (const [mat, list] of this.batches) {
       if (!list.length) continue;
       const buckets = new Map();
@@ -153,15 +203,33 @@ export class World {
         arr.forEach((g) => g.dispose());
         const mesh = new THREE.Mesh(geo, mat);
         const overlay = mat.polygonOffset;
-        mesh.castShadow = !overlay;
+        // A cut-out material (the wire fence) needs its own texture in the shadow pass and keeps
+        // casting by itself. Everything else casts through the shared shadow mesh built below.
+        const cutout = mat.alphaTest > 0 || !!mat.alphaMap;
+        mesh.castShadow = !overlay && cutout;
+        if (!overlay && !cutout) {
+          let sameSide = casters.get(mat.side);
+          if (!sameSide) casters.set(mat.side, (sameSide = []));
+          sameSide.push(geo);
+        }
+        if (!mat.transparent && !cutout) solids.push(geo);
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         mesh.frustumCulled = true;
-        this.root.add(mesh);
+        chunks.add(mesh);
         this.chunks++;
       }
     }
     this.batches.clear();
+    this.root.add(chunks);
+    for (const [side, geos] of casters) this.root.add(shadowCaster(geos, side));
+    // The ambient occlusion pass draws depth and normals with one material for everything:
+    // it gets the opaque level as a single mesh in place of all the chunks.
+    const shape = mergedShape(solids, true);
+    shape.name = 'occlusionShape';
+    shape.frustumCulled = false;
+    this.root.add(shape);
+    this.gr.swapForAO(chunks, shape);
   }
 
   /**

@@ -10,7 +10,7 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
    ┌───────────┼──────────────────────────────────────────────────┐
    │ render/   │ world/          │ player/   │ weapons/  game/      │ enemies/  ui/   audio/
    │ pipeline  │ level scatter   │ controller│ viewmodel shooting   │ squad     hud   sfx
-   │ materials │ details props   │ input     │           director   │
+   │ materials │ details props   │ input     │           director   │ soldier
    │ models    │ effects         │           │                      │
    └───────────┴─────────────────┴───────────┴──────────────────────┴──────────────────
                                    │ только вызовы чистых функций
@@ -46,10 +46,10 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
 
 | Слой | Фабрика | Что делает | Читает из ядра |
 |------|---------|-----------|----------------|
-| `render/pipeline` | `createPipeline(canvas, settings)` | рендерер, небо, каскадные тени, постобработка, пресеты качества | нет |
+| `render/pipeline` | `createPipeline(canvas, settings)` | рендерер, небо, каскадные тени, постобработка, пресеты качества; `prepareMaterial`, `addNoAO`, `swapForAO(full, shape)` | нет |
 | `render/materials` | `loadTexturePack`, `getMaterial`, `pbrMaterial` | процедурные PBR-наборы, замена файлами из `assets/textures` | нет |
 | `render/models` | `loadModelPack`, `getModel`, `getModelGeometry` | glTF из `assets/models`, запасные примитивы | нет |
-| `world/level` | `buildLevel(scene, game)` | геометрия, коллайдеры, сетка, укрытия, точки появления | `collision`, `nav`, `cover` |
+| `world/level` | `buildLevel(scene, game)` | геометрия, коллайдеры, сетка, укрытия, точки появления; слитые сетки статики для теней и для прохода AO | `collision`, `nav`, `cover` |
 | `world/details` | `addBigProps`, `addInteriors`, `addDetails` | уличная мебель, интерьеры, детали выше глаз | `collision` |
 | `world/scatter` | `createScatter(scene, level, quality)` | тысячи мелких объектов инстансингом | нет |
 | `world/props` | `createProps(game)` | ящики, бочки, подбор предметов | `combat.explode`, `rules` |
@@ -59,7 +59,8 @@ index.html ── src/main.js (Game: состояния, цикл, сборка)
 | `weapons/viewmodel` | `createViewmodel(game)` | модели оружия и анимации, только вид | нет |
 | `game/shooting` | `new Shooting(game)` | ввод → арсенал ядра → выстрел → эффекты | `weapons`, `combat` |
 | `game/director` | `new Director(game)` | события волн → появление ботов, баннеры, звук | `waves` |
-| `enemies/squad` | `createSquad(game)` | вид и тело бота вокруг `core/ai` | `ai`, `combat`, `cover` |
+| `enemies/squad` | `createSquad(game)` | тело, анимация и выстрел бота вокруг `core/ai` | `ai`, `combat`, `cover` |
+| `enemies/soldier` | `buildSoldier(type)`, `MUZZLE` | фигура бота: одна сетка со скелетом, атлас цветов и камуфляжа, поза рук на оружии | `rules` (цвета и оружие типа) |
 | `ui/hud` | `createHud(game)` | HUD, меню, экраны | нет |
 | `audio/sfx` | `createAudio(game)` | синтез звука | нет |
 
