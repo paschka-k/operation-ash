@@ -19,6 +19,7 @@
 import { createRng } from './math.js';
 import {
   PLAYER, MAX_WAVES, INTERMISSION_SECONDS, waveTier, waveCount, maxAlive, killScore, regenHealth, waveRoster,
+  bossForWave, RIDER_RULES,
 } from './rules.js';
 import { ECONOMY, stageBreakdown, waveHpMult, absorbDamage } from './rules.js';
 
@@ -157,10 +158,22 @@ export function setPaused(g, paused) {
 function startWave(g, n, events) {
   g.wave = n;
   g.tier = waveTier(n);
-  const q = [];
   // the full roster: foot soldiers, riders (wave 14) and the boss, together exactly waveCount(n) bots
-  for (const [type, count] of Object.entries(waveRoster(n, g.endless))) for (let i = 0; i < count; i++) q.push(type);
+  const roster = { ...waveRoster(n, g.endless) };
+  // the boss opens his wave, the gang leader together with his guard: they leave the shuffle
+  const boss = bossForWave(n);
+  const lead = [];
+  if (boss && roster[boss] > 0) {
+    roster[boss]--;
+    lead.push(boss);
+    const guards = boss === 'bossBiker' ? Math.min(RIDER_RULES.guards, roster.biker || 0) : 0;
+    for (let i = 0; i < guards; i++) { roster.biker--; lead.push('biker'); }
+  }
+  const q = [];
+  for (const [type, count] of Object.entries(roster)) for (let i = 0; i < count; i++) q.push(type);
   for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(g.rng() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
+  // tickGame spawns from the end of the queue: the lead goes last, in reverse
+  for (let i = lead.length - 1; i >= 0; i--) q.push(lead[i]);
   g.queue = q;
   g.waveTotal = q.length;
   g.waveEnemiesLeft = q.length;

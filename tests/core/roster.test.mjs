@@ -138,6 +138,32 @@ function spawnsUpTo(last) {
   return waves;
 }
 
+/** The first `k` spawn events of wave n (endless for n > 10), with seed `seed`. */
+function firstSpawns(n, k, seed) {
+  const g = createGame(seed), clock = { now: 0 };
+  restart(g, 0);
+  g.wave = n - 1;
+  g.endless = n > 10;
+  const out = [];
+  for (let i = 0; i < 400 && out.length < k; i++) {
+    clock.now += 50;
+    for (const ev of tickGame(g, 0.05, clock.now)) if (ev.type === 'spawn') out.push(ev.enemyType);
+  }
+  assert.equal(g.wave, n);
+  return out;
+}
+
+test('a boss wave opens with the boss, the gang leader right with his two guards; the rest stays shuffled', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    assert.deepEqual(firstSpawns(5, 3, seed), ['bossBiker', 'biker', 'biker'], 'wave 5, seed ' + seed);
+    assert.deepEqual(firstSpawns(10, 1, seed), ['bossCommander'], 'wave 10, seed ' + seed);
+    assert.deepEqual(firstSpawns(15, 3, seed), ['bossBiker', 'biker', 'biker'], 'wave 15, seed ' + seed);
+  }
+  // the bots after the boss still come in an order that depends on the seed
+  const rest = (seed) => firstSpawns(5, 8, seed).slice(3).join(',');
+  assert.ok(new Set([1, 2, 3, 4, 5, 6].map(rest)).size > 1, 'the rest of wave 5 is shuffled');
+});
+
 test('the waves spawn their roster: a scooter rider in wave 3, the boss and his guard in wave 5', () => {
   const waves = spawnsUpTo(5);
   const types = (n) => waves[n].map((e) => e.enemyType);
