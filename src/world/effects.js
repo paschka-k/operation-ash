@@ -668,6 +668,56 @@ export class FX {
     return f;
   }
 
+  // ---- wave 13: the flamethrower's stream and things on fire
+  /**
+   * One tick of a flame stream from the nozzle (x, y, z) along the unit vector d. Puffs slow down
+   * by drag and die where `reach` metres are covered, so the fire stops at a wall it hits.
+   * vx, vz: the shooter's velocity, carried by the stream.
+   */
+  flameStream(x, y, z, dx, dy, dz, reach, vx = 0, vz = 0) {
+    const f = this.flames, D = 1.6;
+    for (let i = 0, n = this._n(11); i < n; i++) {
+      const v = rr(15, 19), k = Math.min(0.92, (reach * rr(0.85, 1.05) * D) / v);
+      const life = -Math.log(1 - k) / D;                 // time to cover the reach at this speed and drag
+      const j = 0.08;
+      f.emit(x, y, z,
+        dx * v + rr(-j, j) * v + vx * 0.6, dy * v + rr(-j, j) * v + 0.4, dz * v + rr(-j, j) * v + vz * 0.6,
+        life, rr(0.08, 0.14), rr(1.0, 1.7), 1.0, rr(0.38, 0.6), rr(0.08, 0.16), rr(0.8, 1.0), -2.2, D);
+    }
+    // a hot, nearly white core over the first metres and a few sparks
+    for (let i = 0; i < 2; i++) {
+      const v = rr(10, 14);
+      this.glow.emit(x, y, z, dx * v, dy * v, dz * v, rr(0.1, 0.16), 0.1, 0.55, 1, rr(0.75, 0.9), 0.45, 0.85, 0, 3);
+    }
+    if (rnd() < 0.5 * this.quality) this.glow.emit(x, y, z, dx * 14 + rr(-2, 2), dy * 14 + rr(-1, 2), dz * 14 + rr(-2, 2), rr(0.4, 0.7), 0.04, 0.01, 1, rr(0.5, 0.8), 0.2, 1, 6, 0.6);
+    if (rnd() < 0.35 * this.quality) {
+      const t = reach * rr(0.6, 1);
+      this.smoke.emit(x + dx * t, y + dy * t + 0.3, z + dz * t, rr(-0.3, 0.3), rr(0.8, 1.6), rr(-0.3, 0.3), rr(1.4, 2.4), 0.4, 1.8, 0.09, 0.085, 0.08, 0.32, -0.3, 0.6);
+    }
+  }
+
+  /** The stream splashing on a surface: flames spreading along it. */
+  flameSplash(x, y, z, nx, ny, nz) {
+    for (let i = 0, n = this._n(2); i < n; i++) {
+      this.flames.emit(x + nx * 0.15, y + ny * 0.15, z + nz * 0.15, nx * 1.2 + rr(-1.5, 1.5), ny * 1.2 + rr(0.2, 1.4), nz * 1.2 + rr(-1.5, 1.5),
+        rr(0.3, 0.6), 0.3, 0.7, 1, rr(0.4, 0.6), 0.12, 0.8, -1.5, 1.2);
+    }
+  }
+
+  /**
+   * Flames licking up a burning body standing at (x, y, z). Call every frame it burns. `owner` is the
+   * burning thing: it keeps its own count of flames due, so every body burns at the same rate.
+   */
+  burning(x, y, z, scale = 1, dt = 1 / 60, owner = this) {
+    owner.flamesDue = (owner.flamesDue || 0) + dt * 30 * this.quality;
+    while (owner.flamesDue > 1) {
+      owner.flamesDue -= 1;
+      this.flames.emit(x + rr(-0.22, 0.22) * scale, y + rr(0.2, 1.5) * scale, z + rr(-0.22, 0.22) * scale,
+        rr(-0.2, 0.2), rr(0.9, 1.9), rr(-0.2, 0.2), rr(0.3, 0.6), 0.26 * scale, 0.06, 1, rr(0.35, 0.6), 0.1, 0.8, -0.6, 0.8);
+      if (rnd() < 0.2) this.smoke.emit(x, y + 1.7 * scale, z, rr(-0.2, 0.2), rr(0.8, 1.4), rr(-0.2, 0.2), rr(1.2, 2), 0.3, 1.2, 0.1, 0.095, 0.09, 0.3, -0.3, 0.5);
+    }
+  }
+
   clearFires() {
     for (const f of this.fires) if (f.light) { f.light.hold = false; f.light.life = 0; f.light.light.intensity = 0; }
     this.fires.length = 0;

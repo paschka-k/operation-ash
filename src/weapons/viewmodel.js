@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { clamp, lerp, damp, lineOfSight } from '../core/collision.js';
 import { WEAPON_SPECS, WEAPON_ORDER } from '../core/rules.js';
 import { weaponMaterials } from './sculpt.js';
-import { buildPistol, buildRifle, buildShotgun } from './guns.js';
+import { buildPistol, buildRifle, buildShotgun, buildSmg, buildCarbine, buildSniper, buildLmg, buildMinigun, buildFlamer } from './guns.js';
 
 const ease = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 
@@ -39,6 +39,13 @@ const VIEW = {
   rifle: { build: buildRifle, hip: [0.125, -0.128, -0.34], cant: [0, 0.05, -0.08], reach: [0, -0.173, 0.19], sightY: 0.094, adsZ: -0.24, flash: 1.0, kick: 1.0 },
   // the eye sits forward on the shotgun: further back the stock under the cheek would fill the view
   shotgun: { build: buildShotgun, hip: [0.13, -0.13, -0.33], cant: [0, 0.05, -0.08], reach: [0, 0, 0], sightY: 0.05, adsZ: -0.24, flash: 1.5, kick: 1.9 },
+  // ---- wave 13. light: strength of the muzzle light for a weapon without a flash sprite (the flamer)
+  smg: { build: buildSmg, hip: [0.11, -0.112, -0.31], cant: [0, 0.05, -0.08], reach: [0.03, -0.15, 0.17], sightY: 0.075, adsZ: -0.32, flash: 0.75, kick: 0.7 },
+  carbine: { build: buildCarbine, hip: [0.125, -0.13, -0.35], cant: [0, 0.05, -0.08], reach: [0, -0.17, 0.25], sightY: 0.102, adsZ: -0.2, flash: 1.15, kick: 1.25 },
+  sniper: { build: buildSniper, hip: [0.13, -0.142, -0.37], cant: [0, 0.05, -0.08], reach: [0, -0.02, 0.23], sightY: 0.088, adsZ: -0.22, flash: 1.4, kick: 2.2 },
+  lmg: { build: buildLmg, hip: [0.135, -0.142, -0.35], cant: [0, 0.05, -0.08], reach: [0, -0.07, 0.27], sightY: 0.094, adsZ: -0.26, flash: 1.1, kick: 0.8 },
+  minigun: { build: buildMinigun, hip: [0.16, -0.185, -0.43], cant: [0, 0.04, -0.04], reach: [-0.05, -0.02, 0.33], sightY: 0.1, adsZ: -0.3, flash: 1.3, kick: 0.35 },
+  flamer: { build: buildFlamer, hip: [0.12, -0.13, -0.34], cant: [0, 0.05, -0.08], reach: [0.01, -0.03, 0.17], sightY: 0.068, adsZ: -0.28, flash: 0, light: 0.6, kick: 0.2 },
 };
 
 // --------------------------------------------------------------- Viewmodel
@@ -110,14 +117,29 @@ class Viewmodel {
   fire() {
     const vm = this.models[this.current], view = VIEW[this.current], spec = WEAPON_SPECS[this.current];
     const g = this.game;
-    vm.flash.visible = true;
+    vm.flash.visible = view.flash > 0;
     vm.flash.rotation.z = Math.random() * 6.28;
     vm.flash.scale.setScalar((0.8 + Math.random() * 0.45) * view.flash);
     this.flashT = 0.05;
-    g.gr.muzzleLight.intensity = 9 * view.flash;
-    g.gr.viewMuzzleLight.intensity = 1.6 * view.flash;
+    const light = view.light ?? view.flash;
+    g.gr.muzzleLight.intensity = 9 * light * (view.flash > 0 ? 1 : 0.7 + Math.random() * 0.6);
+    g.gr.viewMuzzleLight.intensity = 1.6 * light;
     this.kick = 1;
     if (spec.perShell) this.pump = 1;
+    if (spec.boltAction) this.boltT = 0;
+  }
+
+  /**
+   * Where the muzzle of the weapon in hand is on screen, as a point `depth` metres in front of the
+   * world camera (the weapon is drawn by its own camera, so its muzzle has no world position).
+   */
+  muzzleInWorld(depth, out) {
+    const vm = this.models[this.current], gr = this.game.gr;
+    vm.group.updateWorldMatrix(true, true);
+    vm.parts.muzzle.getWorldPosition(out).project(gr.viewCamera);
+    out.z = 0.5;
+    out.unproject(gr.camera).sub(gr.camera.position).normalize().multiplyScalar(depth).add(gr.camera.position);
+    return out;
   }
 
   shell() { this.shellPulse = 1; }
@@ -233,6 +255,26 @@ class Viewmodel {
     } else {
       this.reloadTilt = damp(this.reloadTilt, 0, 12, dt);
     }
+
+    // ---- wave 13: barrels that spin, a bolt worked by hand, a pilot flame, a scope
+    if (parts.barrels) parts.barrels.rotation.z -= (m.spin || 0) * 32 * dt;
+    if (parts.bolt) {
+      // after a shot (and at the end of a reload): lift the handle, pull back, push forward, lock
+      let t = this.boltT ?? 1;
+      if (t < 1) this.boltT = t = Math.min(1, t + dt / 0.95);
+      if (m.reloading && m.reloadProgress > 0.78) t = clamp((m.reloadProgress - 0.78) / 0.2, 0, 1);
+      const turn = t < 0.25 ? ease((t - 0.08) / 0.17) : t < 0.8 ? 1 : 1 - ease((t - 0.8) / 0.17);
+      const pull = t < 0.25 ? 0 : t < 0.5 ? ease((t - 0.25) / 0.25) : t < 0.75 ? 1 - ease((t - 0.5) / 0.25) : 0;
+      parts.bolt.rotation.z = 1.05 * turn;
+      parts.bolt.position.z = 0.075 * pull;
+      ry += 0.05 * turn; rz += -0.06 * turn;          // the rifle rolls a little towards the hand working it
+    }
+    if (parts.pilot) {
+      parts.pilot.scale.setScalar(0.75 + Math.random() * 0.5);
+      parts.pilot.rotation.z = Math.random() * 6.28;
+    }
+    // looking through a telescopic sight: the HUD draws the scope, the weapon would only be in the way
+    vm.group.visible = !(spec.scope && m.ads > 0.8);
 
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);

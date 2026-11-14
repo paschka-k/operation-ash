@@ -222,6 +222,16 @@ const STR = {
     revived: 'Попытка {n}',
 
     // ---- wave 13: weapons and grenades
+    w_smg: 'Пистолет-пулемёт U-4',
+    w_carbine: 'Автомат HR-12',
+    w_sniper: 'Снайперская винтовка LR-4',
+    w_lmg: 'Пулемёт LM-6',
+    w_minigun: 'Миниган RG-6',
+    w_flamer: 'Огнемёт FL-2',
+    grenades: 'Гранаты',
+    grenade: 'Граната',
+    fuel: 'Топливо',
+    ctl_grenade: 'Граната', k_grenade: 'G',
 
   },
   en: {
@@ -364,6 +374,16 @@ const STR = {
     revived: 'Attempt {n}',
 
     // ---- wave 13: weapons and grenades
+    w_smg: 'U-4 SMG',
+    w_carbine: 'HR-12 Rifle',
+    w_sniper: 'LR-4 Sniper Rifle',
+    w_lmg: 'LM-6 Machine Gun',
+    w_minigun: 'RG-6 Minigun',
+    w_flamer: 'FL-2 Flamethrower',
+    grenades: 'Grenades',
+    grenade: 'Grenade',
+    fuel: 'Fuel',
+    ctl_grenade: 'Grenade', k_grenade: 'G',
 
   },
 };
