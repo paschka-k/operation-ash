@@ -16,6 +16,9 @@ import { createSquad } from './enemies/squad.js';
 import { Director } from './game/director.js';
 import { createHud } from './ui/hud.js';
 import { clamp, lerp, lineOfSight } from './core/collision.js';
+import { createGamepad } from './player/gamepad.js';
+import { createBigMap } from './ui/bigmap.js';
+import { createKeyScreen } from './ui/keys.js';
 
 const STEP = 1 / PHYSICS_HZ;
 
@@ -89,6 +92,11 @@ class Game {
     canvas.addEventListener('click', () => {
       if (this.state === 'playing' && !this.input.locked) this.input.lock();
     });
+    // ---- wave 11: gamepad, big map (M), key binding screen
+    this.pad = createGamepad(this);
+    this.bigMap = createBigMap(this);
+    this.keys = createKeyScreen(this);
+    this.hud.refreshBindings();
 
     // compile shaders now so the first frames of play do not stutter
     this.menuCamera(0);
@@ -129,7 +137,7 @@ class Game {
 
   /** Global keys: F3 toggles the FPS counter, Esc inside the pause menu goes back. */
   onKey(e) {
-    if (!this.ready) return;
+    if (!this.ready || (this.keys && this.keys.capturing)) return; // a key binding slot takes every key
     if (e.code === 'F3') {
       e.preventDefault();
       this.settings.showFps = !this.settings.showFps;
@@ -139,6 +147,8 @@ class Game {
       // With pointer lock the browser swallows Esc and the lock change pauses the game.
       // Without it (lock refused, test mode) the key itself has to do it.
       if (this.state === 'playing') this.pause();
+      else if (this.hud.screen === 'keys') this.keys.back();
+      else if (this.state === 'menu' && (this.hud.screen === 'settings' || this.hud.screen === 'controls')) this.hud.showScreen('menu');
       else if (this.state === 'paused' && performance.now() - (this.pausedAt || 0) > 300) {
         if (this.hud.screen === 'pause') this.resume();
         else if (this.hud.screen === 'settings' || this.hud.screen === 'controls') this.hud.showScreen('pause');
@@ -171,7 +181,8 @@ class Game {
     this.hud.showHud(true);
     this.gr.viewScene.visible = true;
     this.testMode = !!opts.noLock;
-    if (!opts.noLock) this.input.lock();
+    // a gamepad press is no user gesture: the browser would refuse the lock, so the pad plays without it
+    if (!opts.noLock && this.lastDevice !== 'pad') this.input.lock();
   }
 
   restart() { this.startGame({ noLock: this.testMode }); }
@@ -186,7 +197,7 @@ class Game {
     this.audio.resume();
     this.director.continueEndless();
     this.last = performance.now();
-    if (!this.testMode) this.input.lock();
+    if (!this.testMode && this.lastDevice !== 'pad') this.input.lock();
   }
 
   pause() {
@@ -210,7 +221,7 @@ class Game {
       this.audio.resume();
       this.last = performance.now();
     };
-    if (this.testMode) { go(); return; }
+    if (this.testMode || this.lastDevice === 'pad') { go(); return; }
     // Back into the fight only when the browser hands the mouse back. A click on the button always
     // does. The Esc key does not count as a user gesture, so there the menu simply stays open.
     this.input.lock().then((ok) => { if (ok) go(); });
@@ -230,8 +241,9 @@ class Game {
     this.audio.lowHealth = 0;
   }
 
-  onPointerLockChange(locked) {
-    if (!locked && this.state === 'playing' && !this.testMode) this.pause();
+  /** Losing a lock the game had pauses it; a lock that was refused or never asked for does not. */
+  onPointerLockChange(locked, wasLocked = true) {
+    if (!locked && wasLocked && this.state === 'playing' && !this.testMode) this.pause();
   }
 
   onPlayerDeath() {
@@ -282,6 +294,10 @@ class Game {
   }
 
   frame(dt, raw = dt) {
+    // ---- wave 11: the gamepad feeds input before anything reads it (it may pause or resume);
+    // the big map answers its key and closes outside of play
+    if (this.pad) this.pad.poll(dt);
+    if (this.bigMap) this.bigMap.update(dt);
     const realDt = raw;
     const st = this.state;
     const sim = st === 'playing' || st === 'dead' || st === 'victory';
