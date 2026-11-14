@@ -361,6 +361,20 @@ export class AudioSys {
     this._tone(dest, { t: 0.08, dur: 0.2, type: 'triangle', f: 990, gain: 0.28 });
   }
 
+  /** A purchase in the shop: a coin clink and a bright two-note chime. ok=false is a dull refusal. */
+  purchase(ok = true) {
+    if (!this.ready) return;
+    const dest = this._bus(null, 0.18);
+    if (!ok) {
+      this._tone(dest, { dur: 0.16, type: 'square', f: 180, f2: 140, gain: 0.07 });
+      return;
+    }
+    this._noise(dest, { dur: 0.04, type: 'highpass', f: 5200, q: 0.7, gain: 0.22 });
+    this._tone(dest, { dur: 0.08, type: 'triangle', f: 1318.5, gain: 0.2 });
+    this._tone(dest, { t: 0.07, dur: 0.32, type: 'triangle', f: 1975.5, gain: 0.24 });
+    this._tone(dest, { t: 0.07, dur: 0.26, type: 'sine', f: 3951, gain: 0.05 });
+  }
+
   enemyDeath(pos) {
     if (!this.ready) return;
     const dest = this._bus(pos, 0.2);

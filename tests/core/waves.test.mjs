@@ -2,6 +2,13 @@ import { test, assert, near } from '../harness.mjs';
 import {
   createGame, restart, tickGame, enemyKilled, damagePlayer, continueEndless, setPaused, recordShots, resultStats,
 } from '../../src/core/waves.js';
+import { leaveShop } from '../../src/core/waves.js';
+
+/** After a cleared wave: leave the shop and sit through the countdown (wave 12 replaced the 6 s break). */
+function nextWave(g, clock) {
+  leaveShop(g, clock.now);
+  return advance(g, 3.2, clock);
+}
 
 /** Run the game for `seconds` of game time in 50 ms steps. Returns all events. */
 function advance(g, seconds, clock, onEvent) {
@@ -52,18 +59,19 @@ test('bots arrive one by one and never more than the limit at once', () => {
   assert.equal(g.alive, 3);
   assert.ok(spawns.every((e) => e.tier === 1));
 });
-test('clearing a wave gives a 6 second break and then the next wave with 5 bots', () => {
+test('clearing a wave opens the shop; leaving it gives a 3 second countdown and the next wave with 5 bots', () => {
   const g = createGame(1), clock = { now: 0 };
   restart(g, 0);
   const ev = playWave(g, clock);
   const cleared = ev.find((e) => e.type === 'waveCleared');
-  assert.ok(cleared); assert.equal(cleared.seconds, 6);
+  assert.ok(cleared); assert.equal(cleared.wave, 1);
+  assert.equal(g.phase, 'shop');
+  assert.deepEqual(advance(g, 60, clock), [], 'the shop waits without a timer');
+  leaveShop(g, clock.now);
   assert.equal(g.phase, 'intermission');
-  const t0 = clock.now;
-  const nextEv = advance(g, 7, clock);
-  const start = nextEv.find((e) => e.type === 'waveStart');
+  assert.ok(!advance(g, 2.9, clock).some((e) => e.type === 'waveStart'), 'not before 3 s');
+  const start = advance(g, 0.3, clock).find((e) => e.type === 'waveStart');
   assert.equal(start.wave, 2); assert.equal(start.total, 5);
-  assert.ok(start && clock.now - t0 >= 6000);
 });
 test('the whole spawn budget of a wave matches the formula for every wave', () => {
   const g = createGame(3), clock = { now: 0 };
@@ -72,7 +80,7 @@ test('the whole spawn budget of a wave matches the formula for every wave', () =
   for (let w = 1; w <= 10; w++) {
     const ev = playWave(g, clock);
     counts.push(ev.filter((e) => e.type === 'spawn').length);
-    if (w < 10) advance(g, 6.2, clock);
+    if (w < 10) nextWave(g, clock);
   }
   assert.deepEqual(counts, [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]);
 });
@@ -89,12 +97,13 @@ test('clearing wave 10 is a victory, and endless mode goes on with wave 11 at ti
   const g = createGame(2), clock = { now: 0 };
   restart(g, 0);
   let last = [];
-  for (let w = 1; w <= 10; w++) { last = playWave(g, clock); if (w < 10) advance(g, 6.2, clock); }
+  for (let w = 1; w <= 10; w++) { last = playWave(g, clock); if (w < 10) nextWave(g, clock); }
   assert.ok(last.some((e) => e.type === 'victory'));
   assert.equal(g.phase, 'victory');
   assert.deepEqual(tickGame(g, 1, clock.now + 1), []);
   assert.equal(continueEndless(g, clock.now), true);
-  const ev = advance(g, 7, clock);
+  assert.equal(g.phase, 'shop', 'the endless mode goes through the shop');
+  const ev = nextWave(g, clock);
   const start = ev.find((e) => e.type === 'waveStart');
   assert.deepEqual([start.wave, start.tier, start.total, start.endless], [11, 3, 23, true]);
 });

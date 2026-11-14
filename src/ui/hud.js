@@ -127,7 +127,8 @@ export class HUD {
         <div class="logo" data-t="dead"></div>
         <div class="tagline" data-t="deadSub"></div>
         <div class="stats" id="stats-dead"></div>
-        <button class="btn primary" id="btn-dretry" data-t="restart"></button>
+        <button class="btn primary" id="btn-drevive"></button>
+        <button class="btn" id="btn-dretry" data-t="restart"></button>
         <button class="btn" id="btn-dmenu" data-t="toMenu"></button>
       </div>`);
 
@@ -160,6 +161,7 @@ export class HUD {
     q('btn-sback').onclick = () => this.showScreen(this.backTo || 'menu');
     q('btn-cback').onclick = () => this.showScreen(this.backTo || 'menu');
     q('btn-dretry').onclick = () => g.restart();
+    q('btn-drevive').onclick = () => g.revive();
     q('btn-dmenu').onclick = () => g.toMenu();
     q('btn-vretry').onclick = () => g.restart();
     q('btn-vcont').onclick = () => g.continueEndless();
@@ -316,8 +318,15 @@ export class HUD {
       <div><span>${t('headshots')}</span><b>${stats.headshots}</b></div>
       <div><span>${t('accuracy')}</span><b>${acc}%</b></div>
       <div><span>${t('time')}</span><b>${mm}:${String(ss).padStart(2, '0')}</b></div>
-      <div><span>${t('wave')}</span><b>${stats.wave}/${stats.maxWaves}</b></div>`;
+      <div><span>${t('wave')}</span><b>${stats.wave}/${stats.maxWaves}</b></div>
+      <div><span>${t('deaths')}</span><b>${stats.deaths || 0}</b></div>
+      <div><span>${t('money')}</span><b>${this.game.shop ? this.game.shop.fmtMoney(stats.money || 0) : stats.money || 0}</b></div>`;
     this.q(kind === 'dead' ? 'stats-dead' : 'stats-win').innerHTML = html;
+    if (kind === 'dead') {
+      const rv = this.q('btn-drevive');
+      rv.textContent = t('reviveAt', { n: stats.reviveWave });
+      rv.classList.toggle('hidden', !stats.reviveWave);
+    }
     this.showScreen(kind);
   }
 
@@ -395,7 +404,7 @@ export class HUD {
   updateStamina(dt) {}
 
   // ---- wave 12: money (#h-money) and armour (#h-armor, #h-afill)
-  updateEconomy(dt) {}
+  updateEconomy(dt) { if (this.game.shop) this.game.shop.updateHud(dt); }
 
   // ---- wave 13: grenades (#h-gren) and the sniper scope (#h-scope). w is weapons.hudInfo()
   updateWeaponExtras(dt, w) {}

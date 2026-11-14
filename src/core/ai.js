@@ -24,10 +24,14 @@ let NEXT_ID = 1;
 const rr = (rng, a, b) => a + (b - a) * rng();
 const ri = (rng, a, b) => Math.floor(a + (b - a + 1) * rng());
 
-/** A new bot at a spawn point ({x, z, type?, state?, lastSeen?}) at a difficulty tier 1..3. */
+/**
+ * A new bot at a spawn point ({x, z, type?, state?, lastSeen?, hpMult?}) at a difficulty tier 1..3.
+ * hpMult (waveHpMult of the wave) scales its health; P.hp is the full bar the HUD measures against.
+ */
 export function createEnemy(spawn, tier = 1, rng = Math.random) {
   const type = spawn.type || 'grunt';
   const T = ENEMY_TYPES[type], P = enemyParams(type, tier);
+  if (spawn.hpMult > 0) P.hp *= spawn.hpMult;
   return {
     id: NEXT_ID++, type, tier, T, P, alive: true,
     hp: P.hp, armor: T.armor, scale: T.scale, crouch: 0,

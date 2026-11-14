@@ -47,7 +47,7 @@ export function moveSpeed({ crouched, sprinting, ads, backwards }) {
 export const WEAPON_ORDER = ['pistol', 'rifle', 'shotgun'];
 
 /** What a new game starts with. The rest is bought in the shop between waves. */
-export const START_WEAPONS = ['pistol', 'rifle', 'shotgun'];
+export const START_WEAPONS = ['pistol', 'rifle'];
 
 /**
  * One row per weapon. Angles are degrees, times are milliseconds.
@@ -247,5 +247,95 @@ export function killScore({ base, head = false, streak = 1, source = 'player' })
 }
 
 // ---- wave 12: economy (money, stage reward, shop, upgrades, armour, enemy health growth)
+/**
+ * Money is a wallet of its own: a kill pays as much money as it gives points (killScore),
+ * a cleared wave pays a stage reward that grows with the wave number, with bonuses for
+ * headshots and for a wave without a scratch. Spending never touches the score.
+ */
+export const ECONOMY = {
+  rewardBase: 300,         // stage reward of wave n: rewardBase + rewardPerWave * n
+  rewardPerWave: 150,
+  headshotBonus: 25,       // per headshot in the wave, on top of the kill money
+  flawlessShare: 0.5,      // a wave without any damage taken: half the stage reward again
+  shopDelayMs: 1800,       // from "wave cleared" to the shop: a moment to see the last bot fall
+  countdownMs: 3000,       // from leaving the shop to the next wave
+  reviveIntroMs: 3500,     // from a revival to the restart of the wave the player died in
+};
+
+/** Stage reward for clearing wave n. Keeps growing in the endless mode. */
+export function stageReward(n) { return ECONOMY.rewardBase + ECONOMY.rewardPerWave * Math.max(1, n); }
+
+/**
+ * What a cleared wave earned. killMoney was already paid kill by kill and is listed for the
+ * breakdown; `paid` is what the wave clear adds now, `total` everything the wave earned.
+ */
+export function stageBreakdown(n, { killMoney = 0, headshots = 0, damaged = true } = {}) {
+  const reward = stageReward(n);
+  const heads = headshots * ECONOMY.headshotBonus;
+  const flawless = damaged ? 0 : Math.round(reward * ECONOMY.flawlessShare);
+  const paid = reward + heads + flawless;
+  return { wave: n, kills: killMoney, reward, headshots: heads, flawless, paid, total: killMoney + paid };
+}
+
+/** Enemy health multiplier of wave n: 1 at wave 1, +6% per wave, no ceiling (endless mode). */
+export function waveHpMult(n) { return 1 + 0.06 * (Math.max(1, n) - 1); }
+
+/**
+ * Weapon upgrades, levels 0..3. A level makes the weapon hit harder, hold more rounds,
+ * reload faster and kick less. Costs follow the shop price of the weapon, or freeBase for
+ * the weapons a game starts with (price 0).
+ */
+export const UPGRADE = {
+  maxLevel: 3,
+  freeBase: 1000,
+  costShare: [0.4, 0.7, 1.1],   // cost of level 1, 2, 3 as a share of the base
+  damage: 0.12,                 // per level, multiplies damage
+  mag: 0.15,                    // per level, multiplies the magazine (at least one round per level)
+  reload: 0.1,                  // per level, shortens the reload
+  recoil: 0.08,                 // per level, softens the kick
+};
+
+const round50 = (x) => Math.max(50, Math.round(x / 50) * 50);
+
+/** Price of taking a weapon from level - 1 to `level` (1..3). */
+export function upgradeCost(spec, level) {
+  const share = UPGRADE.costShare[clamp(level, 1, UPGRADE.maxLevel) - 1];
+  return round50((spec.price > 0 ? spec.price : UPGRADE.freeBase) * share);
+}
+
+/**
+ * The numbers of a weapon at an upgrade level. Copies the row and changes only the fields every
+ * weapon has (damage, mag, reserve, reloadMs, recoil), so rows with extra fields keep them.
+ * Level 0 returns the row itself.
+ */
+export function upgradedSpec(spec, level) {
+  const L = clamp(Math.round(level || 0), 0, UPGRADE.maxLevel);
+  if (L === 0) return spec;
+  const out = { ...spec, level: L };
+  if (Number.isFinite(spec.damage)) out.damage = Math.round(spec.damage * (1 + UPGRADE.damage * L) * 10) / 10;
+  if (Number.isFinite(spec.mag)) {
+    out.mag = Math.max(spec.mag + L, Math.round(spec.mag * (1 + UPGRADE.mag * L)));
+    if (Number.isFinite(spec.reserve)) out.reserve = Math.round(spec.reserve * out.mag / spec.mag);
+  }
+  if (Number.isFinite(spec.reloadMs)) out.reloadMs = Math.round(spec.reloadMs * (1 - UPGRADE.reload * L));
+  if (spec.recoil) out.recoil = { ...spec.recoil, x: spec.recoil.x * (1 - UPGRADE.recoil * L), y: spec.recoil.y * (1 - UPGRADE.recoil * L) };
+  return out;
+}
+
+/**
+ * Body armour. A level sets the armour points; while there are points left the armour takes
+ * `absorb` of every hit. It is refilled for free at every visit to the shop.
+ */
+export const ARMOR = {
+  points: [0, 50, 100, 150],    // armour points at level 0..3
+  prices: [0, 800, 1200, 1800], // price of reaching level 1, 2, 3
+  absorb: 0.6,
+};
+
+/** Split a hit between armour and health. Returns {armor (left), health (damage to health), absorbed}. */
+export function absorbDamage(armor, amount) {
+  const absorbed = Math.min(Math.max(0, armor), Math.max(0, amount) * ARMOR.absorb);
+  return { armor: Math.max(0, armor - absorbed), health: Math.max(0, amount - absorbed), absorbed };
+}
 
 
