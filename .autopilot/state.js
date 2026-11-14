@@ -11,9 +11,9 @@ window.STATE =
   "memoryFile": "AGENTS.md",
   "memoryOwner": "user",
   "skillDir": "C:/Users/kombi/.claude/skills/autopilot",
-  "baseCommit": null,
+  "baseCommit": "c4557a5",
   "startedAt": "2026-11-14T17:57:46+01:00",
-  "updatedAt": "2026-11-14T18:11:11+01:00",
+  "updatedAt": "2026-11-14T18:24:06+01:00",
   "finishedAt": null,
   "stages": [
     {
@@ -60,9 +60,9 @@ window.STATE =
     }
   ],
   "requirements": {
-    "total": 14,
+    "total": 15,
     "done": 0,
-    "inTicket": 14,
+    "inTicket": 15,
     "inSpec": 0,
     "placeholder": 0,
     "deferred": 0,
@@ -84,7 +84,8 @@ window.STATE =
         "R09i",
         "R10i",
         "R12i",
-        "R14i"
+        "R14i",
+        "G01"
       ],
       "blockedBy": [],
       "wave": 1,
@@ -102,7 +103,11 @@ window.STATE =
         "vehicleCrash",
         "bossIntro",
         "src/config.js",
-        "e_*"
+        "e_*",
+        "src/render/pipeline.js",
+        "src/ui/gpu.js",
+        "src/ui/hud.js",
+        "src/main.js"
       ],
       "review": "да — фундамент",
       "model": "сильная",
@@ -216,9 +221,12 @@ window.STATE =
     "2026-11-14T18:09:18+01:00",
     "2026-11-14T18:10:47+01:00",
     "2026-11-14T18:11:09+01:00",
-    "2026-11-14T18:11:11+01:00"
+    "2026-11-14T18:11:11+01:00",
+    "2026-11-14T18:11:34+01:00",
+    "2026-11-14T18:24:03+01:00",
+    "2026-11-14T18:24:06+01:00"
   ],
-  "rev": 14,
+  "rev": 17,
   "waiting": null,
   "waits": [],
   "log": [
@@ -310,6 +318,18 @@ window.STATE =
       "g": "G3",
       "ok": true,
       "problems": 0
+    },
+    {
+      "t": "2026-11-14T18:24:03+01:00",
+      "k": "tickets",
+      "n": 3
+    },
+    {
+      "t": "2026-11-14T18:24:06+01:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": true,
+      "problems": 0
     }
   ],
   "reqList": [
@@ -379,6 +399,11 @@ window.STATE =
       "status": "in-ticket"
     },
     {
+      "id": "G01",
+      "text": "«use allways the most performed GPU of the System. Don't use only the onboards GPU!»",
+      "status": "in-ticket"
+    },
+    {
       "id": "R14i",
       "text": "(подразумевается) правила проекта соблюдены: всё порождено кодом без скачиваний, бот — одна сетка со скелетом, динамические предметы — пулы, частота кадров не падает заметно",
       "status": "in-ticket"
@@ -389,7 +414,7 @@ window.STATE =
       "ok": true,
       "at": "2026-11-14T18:09:18+01:00",
       "open": 0,
-      "total": 14
+      "total": 15
     },
     "G2": {
       "ok": true,
@@ -400,7 +425,7 @@ window.STATE =
     },
     "G3": {
       "ok": true,
-      "at": "2026-11-14T18:11:11+01:00",
+      "at": "2026-11-14T18:24:06+01:00",
       "problems": 0
     }
   },

@@ -1,8 +1,8 @@
 # 01 — Правила, петли и езда в ядре, заглушки границ
 
-**Требования:** R01, R02, R03, R04, R05, R06, R07, R08, R09i, R10i, R12i, R14i
+**Требования:** R01, R02, R03, R04, R05, R06, R07, R08, R09i, R10i, R12i, R14i, G01
 **Зависит от:** —
-**Зона:** `src/core/` · `tests/core/` · `src/world/level.js` · `src/world/props.js` · `src/enemies/vehicles.js` (заглушка) · `src/enemies/soldier.js` (только `LOOK` новых типов и заглушка `setRidePose`) · `src/audio/sfx.js` (только заглушки `engine`, `vehicleCrash`, `bossIntro`) · `src/config.js` (строки `e_*` новых типов)
+**Зона:** `src/core/` · `tests/core/` · `src/world/level.js` · `src/world/props.js` · `src/enemies/vehicles.js` (заглушка) · `src/enemies/soldier.js` (только `LOOK` новых типов и заглушка `setRidePose`) · `src/audio/sfx.js` (только заглушки `engine`, `vehicleCrash`, `bossIntro`) · `src/config.js` (строки `e_*` новых типов и строки видеокарты) · `src/render/pipeline.js` (создание контекста) · `src/ui/gpu.js` (новый) · `src/ui/hud.js` и `src/main.js` (только строка видеокарты и вызов подсказки)
 **Волна:** 1
 **Ревью:** да — фундамент
 **Модель:** сильная
@@ -18,6 +18,7 @@
 > «ездоков пускать по заданным петлям вдоль улиц; подбитый транспорт оставляет ездока пешим»
 > «волны-боссы и рост здоровья врагов (иначе покупки сделают игру лёгкой)»
 > «use autopilot for the development of the wafes for best result and parallelisation»
+> «use allways the most performed GPU of the System. Don't use only the onboards GPU!»
 
 ## Разделы спецификации
 
@@ -34,4 +35,5 @@
 - [ ] Цель `kind: 'vehicle'`: луч попадает в повёрнутую коробку транспорта и не попадает мимо неё; `explode` её ранит; цели-солдаты ведут себя как раньше (старые тесты зелёные)
 - [ ] `thinkBoss` выдаёт намерение гранаты не чаще `grenadeEvery` и только при видимости; стоящий 4 с босс переходит к преследованию
 - [ ] Заглушки по границам `interfaces.md` §5 и §7 существуют: `createVehicles(game)` рисует транспорт серыми коробками размеров из `VEHICLES` в пуле с `proxy`; `setRidePose` ставит ездока сидя/стоя; `audio.engine(kind)` возвращает голос с `update` и `stop`, ничего не играющий; игра стартует без ошибок
+- [ ] Видеокарта (истории 30, 31): рендерер всегда создаётся с `powerPreference: 'high-performance'`, при отказе создаётся без него и пишет об этом в консоль; название видеокарты (`WEBGL_debug_renderer_info`, иначе `RENDERER`) видно в настройках и в строке F3; если это встроенная (Intel, AMD Radeon Graphics без номера модели, Microsoft Basic Render, SwiftShader/llvmpipe), в главном меню один раз — до закрытия, сохраняется в настройках — появляется подсказка по-русски и по-английски: Windows «Параметры → Система → Дисплей → Графика → браузер → Высокая производительность» или панель NVIDIA «Управление параметрами 3D → Программные настройки», затем перезапустить браузер; на дискретной видеокарте подсказки нет. Проверено в панели браузера, где сейчас идёт Intel Iris Xe
 - [ ] `npm test` зелёный

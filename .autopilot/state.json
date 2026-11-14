@@ -6,15 +6,15 @@
   },
   "totals": {
     "requirements": 56,
-    "reqDone": 30,
-    "reqPartial": 24,
+    "reqDone": 46,
+    "reqPartial": 8,
     "reqDeferred": 2,
     "stories": 128,
-    "storiesDone": 102,
-    "verifiedTests": 22,
-    "verifiedBrowser": 73,
+    "storiesDone": 120,
+    "verifiedTests": 26,
+    "verifiedBrowser": 87,
     "verifiedCode": 6,
-    "pending": 21
+    "pending": 3
   },
   "gates": [
     {
@@ -33,7 +33,7 @@
       "id": "G3",
       "name": "Честные статусы",
       "ok": true,
-      "detail": "26 историй не закрыты полностью, у каждой названа причина"
+      "detail": "8 историй не закрыты полностью, у каждой названа причина"
     }
   ],
   "requirements": [
@@ -324,10 +324,8 @@
         "E01-6",
         "E15-1"
       ],
-      "status": "partial",
-      "weakest": [
-        "E15-1"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R19",
@@ -393,10 +391,8 @@
         "E09-3",
         "E14-6"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-6"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R23",
@@ -679,10 +675,8 @@
       "stories": [
         "E13-2"
       ],
-      "status": "partial",
-      "weakest": [
-        "E13-2"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R42",
@@ -692,10 +686,8 @@
       "stories": [
         "E13-3"
       ],
-      "status": "partial",
-      "weakest": [
-        "E13-3"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R43",
@@ -705,10 +697,8 @@
       "stories": [
         "E13-4"
       ],
-      "status": "partial",
-      "weakest": [
-        "E13-4"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R44",
@@ -719,10 +709,8 @@
         "E13-1",
         "E13-5"
       ],
-      "status": "partial",
-      "weakest": [
-        "E13-5"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R45",
@@ -733,10 +721,8 @@
         "E13-1",
         "E13-6"
       ],
-      "status": "partial",
-      "weakest": [
-        "E13-6"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R46",
@@ -746,10 +732,8 @@
       "stories": [
         "E14-1"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-1"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R47",
@@ -765,15 +749,8 @@
         "E15-3",
         "E15-4"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-2",
-        "E14-7",
-        "E15-1",
-        "E15-2",
-        "E15-3",
-        "E15-4"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R48",
@@ -784,11 +761,8 @@
         "E14-3",
         "E14-7"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-3",
-        "E14-7"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R49",
@@ -798,10 +772,8 @@
       "stories": [
         "E14-4"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-4"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R50",
@@ -824,10 +796,8 @@
       "stories": [
         "E13-7"
       ],
-      "status": "partial",
-      "weakest": [
-        "E13-7"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R52",
@@ -838,11 +808,8 @@
         "E14-2",
         "E15-5"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-2",
-        "E15-5"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R53",
@@ -852,10 +819,8 @@
       "stories": [
         "E14-2"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-2"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R54",
@@ -865,10 +830,8 @@
       "stories": [
         "E14-5"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-5"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R55",
@@ -892,10 +855,8 @@
       "stories": [
         "E14-6"
       ],
-      "status": "partial",
-      "weakest": [
-        "E14-6"
-      ]
+      "status": "done",
+      "weakest": []
     }
   ],
   "stories": [
@@ -2293,9 +2254,9 @@
       "req": [
         "R41"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-11"
+      "status": "done",
+      "verified": "tests",
+      "evidence": "src/core/stamina.js, tests/core/stamina.test.mjs; браузер: бег обрывается через 3.02 с, снова доступен через 2.0 с (30%), полный запас через 4.7 с; полоса над здоровьем (классы draining, locked, full); после слияния: через 4 с бега запас 0.05, бег выключен"
     },
     {
       "id": "E13-3",
@@ -2305,9 +2266,9 @@
       "req": [
         "R42"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-11"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "радар 300 px (220 px на узком экране), холст 600 px; не перекрывает заголовок волны и ленту при 1280×720 и 1920×1080 (проверка рамок элементов после слияния)"
     },
     {
       "id": "E13-4",
@@ -2317,9 +2278,9 @@
       "req": [
         "R43"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-11"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "настройка radarEnemies: при трёх живых врагах режим «стрелявшие» рисует 1 точку, «все» — 3; действует и на большой карте"
     },
     {
       "id": "E13-5",
@@ -2329,9 +2290,9 @@
       "req": [
         "R44"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-11"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "src/ui/keys.js, src/core/bindings.js, tests/core/bindings.test.mjs; прыжок на F через настоящий экран: F прыгает 1.07 м, пробел нет, после перезагрузки сохранилось; F3 при ожидании игнорируется, Esc отменяет, Backspace очищает. Ревью нашло 8 дефектов (ожидание клавиши переживало возврат в игру с геймпада, отказ захвата мыши не ставил паузу, повторное нажатие стирало второй слот и др.), все исправлены (0506e93) и проверены"
     },
     {
       "id": "E13-6",
@@ -2341,9 +2302,9 @@
       "req": [
         "R45"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-11"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "src/core/gamepad.js (тесты), src/player/gamepad.js; подменённый геймпад Xbox и DualSense: движение 3.95 м/с, половина хода 2.23 м/с, обзор 3.4/2.3 рад/с, RT огонь, LT прицел, A прыжок, X перезарядка, L3 бег, Y смена, RB граната, View инвентарь, Start пауза, меню и магазин с геймпада, «В бой» и возрождение без захвата мыши. Нестандартный геймпад не читается (подсказка). Настоящий контроллер в среде не проверялся"
     },
     {
       "id": "E13-7",
@@ -2353,9 +2314,9 @@
       "req": [
         "R51"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-11"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "src/ui/bigmap.js: M открывает и закрывает карту квартала, закрывается на паузе, при смерти, победе, в меню; не рисуется поверх прицела снайпера и инвентаря. Баннер волны рисуется поверх открытой карты на 2.5 с"
     },
     {
       "id": "E14-1",
@@ -2365,9 +2326,9 @@
       "req": [
         "R46"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "tests",
+      "evidence": "tests/core/economy.test.mjs; браузер: после волны 1 деньги 1230 (убийства 480, награда 450, голова 75, без урона 225), очки 730 не меняются от покупок"
     },
     {
       "id": "E14-2",
@@ -2379,9 +2340,9 @@
         "R52",
         "R53"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "src/core/shop.js, src/ui/shop.js; магазин открывается через 1.8 с после волны, покупка дробовика 2230 → 730, «В бой» запускает волну через 3.0 с; все девять стволов в списке после слияния с волной 13; бесплатное пополнение один раз за визит; двойной щелчок не покупает второй раз (ревью, исправлено a45ec26)"
     },
     {
       "id": "E14-3",
@@ -2391,9 +2352,9 @@
       "req": [
         "R48"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "улучшение автомата: магазин 30 → 35, перезарядка 2300 → 2070 мс, урон 24.6; броня 50 поглотила 12 из 20, 100 — 24 из 40; огнемёт после двух улучшений: урон 7.4, бак 130"
     },
     {
       "id": "E14-4",
@@ -2403,9 +2364,9 @@
       "req": [
         "R49"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "инвентарь по I и по кнопке View геймпада, игра идёт (0.5 с игрового времени при открытом окне), закрывается на паузе и при смерти; новые стволы в списке"
     },
     {
       "id": "E14-5",
@@ -2415,9 +2376,9 @@
       "req": [
         "R54"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "tests",
+      "evidence": "waveHpMult(n) = 1 + 0.06·(n−1); браузер: рядовой 112 на волне 3, 124 на волне 5, 177 на волне 10; полоса здоровья врага от полного значения"
     },
     {
       "id": "E14-6",
@@ -2428,9 +2389,9 @@
         "R56",
         "R22"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "tests/core/revive.test.mjs; смерть на волне 3 и 4: кнопка «Возродиться на волне N», восстановлены деньги, очки, стволы с уровнями, патроны, гранаты, броня; летящие гранаты и горящие боты убраны; волна начинается заново; победа и бесконечный режим после возрождения работают; «Смерти» считает каждую смерть"
     },
     {
       "id": "E14-7",
@@ -2441,9 +2402,9 @@
         "R47",
         "R48"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-12"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "перезапуск из паузы: пистолет и автомат, без уровней, 2 гранаты, 0 денег, 0 брони, 0 смертей"
     },
     {
       "id": "E15-1",
@@ -2454,9 +2415,9 @@
         "R47",
         "R18"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-13"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "tests/core/arms.test.mjs; шесть строк WEAPON_SPECS (smg, carbine, sniper, lmg, minigun, flamer, слоты 4–9), модели Sculpt по 6–8 вызовов отрисовки (автомат AR-7 — 7); темп: ПП 17 выстр./с, HR-12 520, пулемёт 650; перезарядки совпадают с reloadMs до 30 мс; все девять стволов стреляют и перезаряжаются с реального ввода. Звук на слух не проверен"
     },
     {
       "id": "E15-2",
@@ -2466,9 +2427,9 @@
       "req": [
         "R47"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-13"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "огнемёт: сильный урон на 2–6 м, след на 9.5 м, ноль на 11 м; горение 2 с, пламя у каждого горящего бота (ревью, исправлено 60dd228); бочка и ящик загораются"
     },
     {
       "id": "E15-3",
@@ -2478,9 +2439,9 @@
       "req": [
         "R47"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-13"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "снайперская винтовка: одно попадание в тело убивает рядового и штурмовика яруса 1; при прицеливании модель скрыта, оптика на весь экран, поле зрения 17°; оптика закрывается при смене оружия, паузе, большой карте, инвентаре"
     },
     {
       "id": "E15-4",
@@ -2490,9 +2451,9 @@
       "req": [
         "R47"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-13"
+      "status": "done",
+      "verified": "tests",
+      "evidence": "раскрутка: первый выстрел через 0.867 с, затем около 30 выстр./с; скорость 3.02 м/с, 2.61 при раскрутке; бег при вращении стволов невозможен; прицел раскручивает стволы и прерывает бег"
     },
     {
       "id": "E15-5",
@@ -2502,9 +2463,9 @@
       "req": [
         "R52"
       ],
-      "status": "partial",
-      "verified": "pending",
-      "evidence": "в работе: ветка wave-13"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "tests/core/grenade.test.mjs; бросок по G и RB: долетела до стены 7.5 м, отскочила, взорвалась через 2.73 с, убила рядового в 0.9–1.6 м, сломала ящик; игроку 39 урона на 4 м; гранаты убираются в меню, при новой игре, в магазине и при возрождении; после смерти игрока гранаты и огонь никого не убивают"
     },
     {
       "id": "E16-1",
