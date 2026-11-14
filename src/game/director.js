@@ -8,9 +8,9 @@ import {
 } from '../core/waves.js';
 import { leaveShop, reviveAtCheckpoint } from '../core/waves.js';
 import { MAX_WAVES } from '../core/rules.js';
+import { ECONOMY } from '../core/rules.js';
 
 const rnd = Math.random;
-const SHOP_DELAY = 1.8;   // seconds of play between "wave cleared" and the shop screen
 
 export class Director {
   constructor(game, seed = 20261010) {
@@ -122,7 +122,7 @@ export class Director {
         g.hud.banner(g.t('waveClear'), '', 3);
         g.audio.waveClear();
         g.props.restoreSpawners();   // the break restores every supply point
-        this.shopIn = SHOP_DELAY;
+        this.shopIn = ECONOMY.shopDelayMs / 1000;   // seconds of play, counted down in update()
         break;
       case 'victory':
         g.onVictory();

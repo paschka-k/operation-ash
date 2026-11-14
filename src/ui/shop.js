@@ -10,6 +10,9 @@ import { shopOffers, buyWeapon, buyUpgrade, buyGrenade, buyArmor, refillAmmo } f
 import { specOf, weaponLevel, WEAPON_ORDER, WEAPON_SPECS } from '../core/weapons.js';
 import { GRENADE, UPGRADE, ARMOR } from '../core/rules.js';
 
+// After a purchase its row ignores clicks this long (interface timing, not a game rule).
+const PURCHASE_GUARD_MS = 400;
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** A string with {name} fields filled in. Unlike t(key, vars) it is safe for values that contain '$'. */
@@ -61,6 +64,11 @@ export class Shop {
         </div>
       </div>`, 'shop-screen');
     this.root.addEventListener('click', (e) => this.onClick(e));
+    // A held Enter repeats the activation of the focused button: every purchase needs a new press.
+    this.root.addEventListener('keydown', (e) => {
+      if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault();
+    }, true);
+    this.guard = { key: null, until: 0 };   // the row just bought from, deaf for a moment
 
     // the inventory overlay lives in the HUD, so it hides with it behind every screen
     this.inv = document.createElement('div');
@@ -102,6 +110,10 @@ export class Shop {
     if (!b || b.disabled || !this.root.contains(b)) return;
     const g = this.game;
     if (b.id === 'btn-shop-go') { g.leaveShop(); return; }
+    // A row redraws in place after a purchase (Buy becomes Upgrade, armour 1 becomes armour 2), so
+    // the second click of a double click or a gamepad button held down would buy the next step too.
+    const key = b.dataset.key, now = performance.now();
+    if (key && key === this.guard.key && now < this.guard.until) return;
     const core = g.director.core, a = g.weapons.arsenal, id = b.dataset.id;
     let r, done = '';
     switch (b.dataset.act) {
@@ -115,6 +127,7 @@ export class Shop {
     if (r.ok) {
       g.audio.purchase(true);
       this.message(done);
+      this.guard = { key, until: now + PURCHASE_GUARD_MS };
     } else {
       g.audio.purchase(false);
       this.message(this.reasonText(r.reason), true);

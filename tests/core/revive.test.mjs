@@ -116,6 +116,30 @@ test('revival works only when dead, and a revived game still wins after wave 10 
   assert.equal(g.deaths, 2);
 });
 
+test('a death is counted when it happens: the death screen and the victory screen show the true number', () => {
+  const g = createGame(3), clock = { now: 0 };
+  restart(g, 0);
+  toWave(g, clock, 2);
+  playWave(g, clock, 1);
+  assert.equal(g.phase, 'dead');
+  assert.equal(resultStats(g).deaths, 1, 'the first death screen shows 1');
+  damagePlayer(g, 1000, clock.now);
+  assert.equal(g.deaths, 1, 'damage to a dead player is no second death');
+  reviveAtCheckpoint(g, clock.now);
+  assert.equal(g.deaths, 1, 'a revival is not a death');
+  advance(g, 4, clock);
+  playWave(g, clock, 2);
+  assert.equal(resultStats(g).deaths, 2);
+  reviveAtCheckpoint(g, clock.now);
+  advance(g, 4, clock);
+  for (;;) {
+    playWave(g, clock);
+    if (g.phase === 'victory') break;
+    leaveShop(g, clock.now); advance(g, 3.2, clock);
+  }
+  assert.equal(resultStats(g).deaths, 2, 'the victory screen shows both deaths');
+});
+
 test('a death in the countdown after the shop revives at the coming wave, purchases kept', () => {
   const g = createGame(1), clock = { now: 0 };
   restart(g, 0);
@@ -140,12 +164,21 @@ test('snapshotArsenal is a deep copy and restoreArsenal brings back weapons, lev
   a.weapons.rifle.mag = 17; a.grenades = 3;
   const snap = snapshotArsenal(a);
   assert.equal(snap.reload, undefined);
+  // the live objects of the checkpoint moment are changed in place: a shallow snapshot would see it
+  const liveSpec = a.specs.rifle, liveAmmo = a.weapons.rifle;
+  liveSpec.mag = 999; liveSpec.recoil.x = 99; liveAmmo.reserve = 0;
+  a.levels.rifle = 3; a.owned.push('ghost');
+  assert.equal(snap.specs.rifle.mag, 39, 'the spec in the snapshot is its own copy');
+  assert.notEqual(snap.specs.rifle.recoil.x, 99);
+  assert.equal(snap.weapons.rifle.reserve, 180);
+  assert.equal(snap.levels.rifle, 2);
+  assert.deepEqual(snap.owned, ['pistol', 'rifle', 'shotgun']);
+  a.owned.pop();
   // what happens after the checkpoint
   tryFire(a, 0); tryFire(a, 1000);
-  a.weapons.rifle.reserve = 0; a.grenades = 0;
+  a.grenades = 0;
   giveWeapon(a, 'pistol');
   setWeaponLevel(a, 'rifle', 3);
-  a.specs.rifle.mag = 999;               // must not leak into the snapshot
   a.lastTick = 50000;
   beginReload(a, 50000);
   restoreArsenal(a, snap);
@@ -154,6 +187,8 @@ test('snapshotArsenal is a deep copy and restoreArsenal brings back weapons, lev
   assert.equal(a.grenades, 3);
   assert.equal(a.levels.rifle, 2);
   assert.equal(specOf(a, 'rifle').mag, 39);
+  assert.equal(specOf(a, 'rifle').recoil.x, snap.specs.rifle.recoil.x);
+  assert.notEqual(a.specs.rifle, snap.specs.rifle, 'restoring copies again');
   assert.equal(a.reload, null);
   assert.equal(a.lastTick, 50000, 'the clock keeps running');
   // restoring twice gives two independent copies

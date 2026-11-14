@@ -257,6 +257,7 @@ export const ECONOMY = {
   rewardPerWave: 150,
   headshotBonus: 25,       // per headshot in the wave, on top of the kill money
   flawlessShare: 0.5,      // a wave without any damage taken: half the stage reward again
+  shopDelayMs: 1800,       // from "wave cleared" to the shop: a moment to see the last bot fall
   countdownMs: 3000,       // from leaving the shop to the next wave
   reviveIntroMs: 3500,     // from a revival to the restart of the wave the player died in
 };

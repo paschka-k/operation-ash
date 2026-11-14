@@ -55,7 +55,7 @@ export function createGame(seed = 1) {
     player: freshPlayer(),
     money: 0,                // the wallet; spending it never touches the score
     spent: 0,
-    deaths: 0,               // revivals so far
+    deaths: 0,               // deaths so far, the one being shown on the death screen included
     waveMoney: 0,            // kill money of the current wave, for the shop's breakdown
     waveHeadshots: 0,
     waveDamaged: false,
@@ -127,13 +127,12 @@ export function leaveShop(g, now) {
 
 /**
  * After a death: back to the checkpoint of the wave the player died in (money, score, counters,
- * armour; the game layer restores the arsenal from checkpoint.arsenal), full health, one more death
- * counted, and that wave starts again from the beginning after a short intro. Play time keeps running.
+ * armour; the game layer restores the arsenal from checkpoint.arsenal), full health, and that wave
+ * starts again from the beginning after a short intro. Play time and the death count keep running.
  */
 export function reviveAtCheckpoint(g, now) {
   const cp = g.checkpoint;
   if (g.phase !== 'dead' || !cp) return false;
-  g.deaths++;
   g.money = cp.money; g.spent = cp.spent; g.score = cp.score; g.bestStreak = cp.bestStreak; g.endless = cp.endless;
   Object.assign(g.player, {
     health: g.player.maxHealth, lastDamageAt: now - PLAYER.regenDelay * 1000,
@@ -239,7 +238,7 @@ export function damagePlayer(g, amount, now) {
   if (g.phase === 'wave' && amount > 0) g.waveDamaged = true;
   p.health = Math.max(0, p.health - split.health);
   p.lastDamageAt = now;
-  if (p.health <= 0 && g.phase !== 'menu') g.phase = 'dead';
+  if (p.health <= 0 && g.phase !== 'menu') { g.phase = 'dead'; g.deaths++; }
   return { health: p.health, dead: p.health <= 0 };
 }
 
