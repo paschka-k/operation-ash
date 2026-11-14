@@ -108,11 +108,14 @@ export class Shop {
   onClick(e) {
     const b = e.target.closest('button');
     if (!b || b.disabled || !this.root.contains(b)) return;
-    const g = this.game;
+    const g = this.game, now = performance.now();
+    // the button the focus moved to after a purchase (render) is just as deaf: a quick second press
+    // of Enter or of the pad's A must not buy something else or leave the shop
+    if (now < this.guard.until && this.guard.moved && (b.dataset.key || b.id) === this.guard.moved) return;
     if (b.id === 'btn-shop-go') { g.leaveShop(); return; }
     // A row redraws in place after a purchase (Buy becomes Upgrade, armour 1 becomes armour 2), so
     // the second click of a double click or a gamepad button held down would buy the next step too.
-    const key = b.dataset.key, now = performance.now();
+    const key = b.dataset.key;
     if (key && key === this.guard.key && now < this.guard.until) return;
     const core = g.director.core, a = g.weapons.arsenal, id = b.dataset.id;
     let r, done = '';
@@ -127,7 +130,7 @@ export class Shop {
     if (r.ok) {
       g.audio.purchase(true);
       this.message(done);
-      this.guard = { key, until: now + PURCHASE_GUARD_MS };
+      this.guard = { key, until: now + PURCHASE_GUARD_MS, moved: null };
     } else {
       g.audio.purchase(false);
       this.message(this.reasonText(r.reason), true);
@@ -150,7 +153,7 @@ export class Shop {
       parts.push(`${t(label)} ${a}` + (b !== null && b !== a ? ` → <em>${b}</em>` : ''));
     };
     add('statDamage', (s) => (Number.isFinite(s.damage) ? num(s.damage) + (s.pellets > 1 ? '×' + s.pellets : '') : null));
-    add('statMag', (s) => (Number.isFinite(s.mag) ? String(s.mag) : null));
+    add(now.flame ? 'statFuel' : 'statMag', (s) => (Number.isFinite(s.mag) ? String(s.mag) : null)); // a flamer's magazine is its tank
     add('statReload', (s) => (Number.isFinite(s.reloadMs) ? tf('secs', { n: num(s.reloadMs / 1000) }) : null));
     return parts.join(' · ');
   }
@@ -160,6 +163,7 @@ export class Shop {
     const o = shopOffers(core, a);
     // keep the keyboard or gamepad focus on the same row after a purchase redraws the lists
     const focusKey = document.activeElement && this.root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+    const order = [...this.root.querySelectorAll('[data-key]')].map((n) => n.dataset.key);
 
     this.q('shop-sub').textContent = tf('shopSub', { n: o.stage ? o.stage.wave : core.wave });
     this.q('shop-money').textContent = fmtMoney(o.money);
@@ -209,7 +213,15 @@ export class Shop {
 
     if (focusKey) {
       const el = this.root.querySelector(`[data-key="${focusKey}"]`);
-      (el && !el.disabled ? el : this.q('btn-shop-go')).focus();
+      let next = el && !el.disabled ? el : null;
+      if (!next) {
+        // that row has nothing more to buy: the next button that still does something, the battle button last
+        const live = [...this.root.querySelectorAll('button[data-key]:not(:disabled)')];
+        const at = order.indexOf(focusKey);
+        next = live.find((n) => order.indexOf(n.dataset.key) > at) || live[live.length - 1] || this.q('btn-shop-go');
+        this.guard.moved = next.dataset.key || next.id;
+      }
+      next.focus();
     }
   }
 
@@ -235,8 +247,10 @@ export class Shop {
   toggleInventory() { if (this.invOpen) this.closeInventory(); else this.openInventory(); }
 
   openInventory() {
+    if (this.game.bigMap) this.game.bigMap.close();   // one overlay at a time: they would overlap on small screens
     this.invOpen = true;
     this.inv.classList.remove('hidden');
+    this.hud.hud.classList.add('inv-open');   // on short windows it takes the radar's corner (styles.css)
     this.invT = 0;
     this.renderInventory();
   }
@@ -244,10 +258,12 @@ export class Shop {
   closeInventory() {
     this.invOpen = false;
     this.inv.classList.add('hidden');
+    this.hud.hud.classList.remove('inv-open');
   }
 
   renderInventory() {
-    const html = `<div class="inv-head"><span>${t('inventory')}</span><small>${t('invClose')}</small></div>` + this.carryHtml(true);
+    const key = esc((this.hud.prompts && this.hud.prompts.inventory) || '');   // the key or the pad button in use
+    const html = `<div class="inv-head"><span>${t('inventory')}</span><small>${tf('invClose', { k: key })}</small></div>` + this.carryHtml(true);
     if (html !== this.invHtml) { this.invHtml = html; this.inv.innerHTML = html; }
   }
 

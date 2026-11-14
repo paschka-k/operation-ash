@@ -217,6 +217,11 @@ class Game {
     this.player.damageFlash = 0;
     this.gr.uniforms.damage.value = 0;
     this.gr.uniforms.lowHealth.value = 0;
+    // the shop stops the simulation, so nothing would quiet the minigun or the flamer, or lower a scope;
+    // a grenade still on its fuse would hang in the air and go off in the countdown after the shop
+    this.audio.weaponLoops(0, false, false);
+    this.weapons.lowerSights();
+    this.grenades.clear();
     this.shop.open();
   }
 
@@ -231,7 +236,8 @@ class Game {
     this.hud.showHud(true);
     this.audio.resume();
     this.last = performance.now();
-    if (!this.testMode) this.input.lock();   // a click on the button is a user gesture; a refusal leaves the canvas click
+    // a click on the button is a user gesture; a refusal leaves the canvas click. A gamepad press is none.
+    if (!this.testMode && this.lastDevice !== 'pad') this.input.lock();
   }
 
   /** "Revive at wave N": the scene is cleared, the checkpoint of that wave comes back and the wave starts again. */
@@ -241,8 +247,9 @@ class Game {
     this.audio.resume();
     this.input.releaseAll();
     this.acc = 0;
-    this.enemies.clear();
+    this.enemies.clear();            // burning bots go with them
     this.props.clear();
+    this.grenades.clear();           // a grenade thrown before the death must not go off in the new attempt
     this.fx.clear();
     this.world._places();
     this.player.reset();
@@ -269,6 +276,7 @@ class Game {
     this.input.unlock();
     this.input.releaseAll();
     this.audio.suspend();
+    this.weapons.lowerSights();     // the aim button was let go with everything else
     this.hud.showScreen('pause');
     this.shop.closeInventory();
   }

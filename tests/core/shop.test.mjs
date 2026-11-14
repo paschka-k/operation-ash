@@ -115,6 +115,35 @@ test('buying upgrades: three levels, then no more; the arsenal reads the upgrade
   assert.equal(reserveMax(specOf(a, 'rifle')), Math.round(264 * 1.5), 'the carrying limit follows the upgrade');
 });
 
+test('the six wave 13 weapons are sold, upgraded and refilled like the old ones, keeping their own fields', () => {
+  const NEW = ['smg', 'carbine', 'sniper', 'lmg', 'minigun', 'flamer'];
+  const { g, a } = inShop(200000);
+  const offer = shopOffers(g, a);
+  for (const id of NEW) {
+    const w = offer.weapons.find((x) => x.id === id);
+    assert.ok(w && w.forSale && w.canBuy && w.nameKey === 'w_' + id, id);
+  }
+  for (const id of NEW) {
+    assert.equal(buyWeapon(g, a, id).ok, true, id);
+    const row = WEAPON_SPECS[id];
+    assert.deepEqual(a.weapons[id], { mag: row.mag, reserve: row.reserve }, id);
+    for (let L = 1; L <= UPGRADE.maxLevel; L++) assert.equal(buyUpgrade(g, a, id).ok, true, id + ' level ' + L);
+    const up = specOf(a, id);
+    assert.ok(up.damage > row.damage && up.mag > row.mag && up.reloadMs < row.reloadMs, id);
+    for (const k of ['moveMul', 'spinUpMs', 'spinDownMs', 'spinMoveMul', 'noAds', 'scope', 'boltAction', 'flame', 'range', 'burn']) {
+      assert.deepEqual(up[k], row[k], id + '.' + k);
+    }
+    assert.equal(a.weapons[id].mag, up.mag, id + ': a full magazine (belt, tank) grows with the upgrade');
+  }
+  assert.ok(specOf(a, 'minigun').mag > 300 && specOf(a, 'flamer').mag > 100, 'a longer belt and a bigger tank');
+  // the free refill fills fuel and belts to the upgraded size
+  a.weapons.flamer.mag = 0; a.weapons.flamer.reserve = 0;
+  a.weapons.minigun.mag = 5; a.weapons.minigun.reserve = 0;
+  assert.equal(refillAmmo(g, a).ok, true);
+  assert.deepEqual(a.weapons.flamer, { mag: specOf(a, 'flamer').mag, reserve: specOf(a, 'flamer').reserve });
+  assert.deepEqual(a.weapons.minigun, { mag: specOf(a, 'minigun').mag, reserve: specOf(a, 'minigun').reserve });
+});
+
 test('setWeaponLevel(0) goes back to the plain row', () => {
   const a = createArsenal('rifle', ['rifle']);
   setWeaponLevel(a, 'rifle', 2);

@@ -257,8 +257,8 @@ export function refillArsenal(a) {
   return any;
 }
 
-// what changes from moment to moment and is not part of a checkpoint
-const TRANSIENT = ['reload', 'switching', 'nextFireAt', 'lastTick', 'bloom', 'stance', 'shotsFired'];
+// what changes from moment to moment and is not part of a checkpoint (spin and trigger: the minigun's barrels)
+const TRANSIENT = ['reload', 'switching', 'nextFireAt', 'lastTick', 'bloom', 'stance', 'shotsFired', 'spin', 'trigger'];
 const clone = (v) => (Array.isArray(v) ? v.map(clone)
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)])) : v);
 
@@ -269,13 +269,15 @@ export function snapshotArsenal(a) {
   return out;
 }
 
-/** Back to a snapshot. Reloads and switches in progress are dropped, the clock (lastTick) keeps running. */
+/** Back to a snapshot. Reloads, switches and turning barrels are dropped, the clock (lastTick) keeps running. */
 export function restoreArsenal(a, snap) {
   for (const [k, v] of Object.entries(snap)) if (!TRANSIENT.includes(k)) a[k] = clone(v);
   a.reload = null;
   a.switching = null;
   a.nextFireAt = 0;
   a.bloom = 0;
+  a.spin = 0;
+  a.trigger = false;
 }
 
 // ---- wave 13: spinning barrels and the weight of a weapon

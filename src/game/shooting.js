@@ -72,6 +72,8 @@ export class Shooting {
   }
 
   adsAmount() { return this.ads; }
+  /** Down from the sights at once (pause, the shop): a sniper scope never waits behind a menu. */
+  lowerSights() { this.ads = 0; }
   zoomRatio() { return lerp(1, specOf(this.arsenal).zoom, ease(this.ads)); }
   totalAmmo() { return totalAmmo(this.arsenal); }
   /** An ammo box: one magazine for every owned weapon. */
@@ -81,9 +83,12 @@ export class Shooting {
   /** Debug: every weapon in the game. */
   giveAll() { for (const id of WEAPON_ORDER) giveWeapon(this.arsenal, id); }
   firingLock() {
-    const a = this.arsenal;
+    const a = this.arsenal, input = this.game.input, spec = specOf(a);
     if (spinLevel(a) > 0) return true;     // no running with the barrels of a minigun turning
-    return this.game.input.left && a.weapons[a.current].mag > 0 && !a.reload && !a.switching;
+    // the aim button spins a minigun up (it has no sights): held, it stops a sprint as the trigger does,
+    // also the gamepad's latched sprint (L3), which would otherwise keep the barrels from ever starting
+    if (spec.spinUpMs && spec.noAds && input.right && !a.switching) return true;
+    return input.left && a.weapons[a.current].mag > 0 && !a.reload && !a.switching;
   }
   /** Speed multiplier of the weapon in hand, for the player's moveSpeed(). */
   moveMul() { return weaponMoveMul(this.arsenal); }
@@ -138,8 +143,10 @@ export class Shooting {
     }
     const spec = specOf(a), w = a.weapons[a.current];
 
-    // aim down sights
-    const wantAds = player.alive && input.right && !player.sprinting && !(a.reload && !spec.perShell) && !a.switching && !spec.noAds && !this.throwT;
+    // aim down sights. A scope is not raised while the big map or the inventory is open: the
+    // overlay and the scope would cover each other
+    const wantAds = player.alive && input.right && !player.sprinting && !(a.reload && !spec.perShell) && !a.switching && !spec.noAds && !this.throwT
+      && !(spec.scope && this.overlayOpen());
     const rate = 1000 / Math.max(50, spec.adsMs);
     this.ads = clamp(this.ads + (wantAds ? 1 : -1) * dt * rate * (wantAds ? 1 : 1.3), 0, 1);
 
@@ -189,6 +196,12 @@ export class Shooting {
     player.lookDX = player.lookDY = 0;
   }
 
+  /** Is the big map or the inventory open over the view? */
+  overlayOpen() {
+    const g = this.game;
+    return !!((g.bigMap && g.bigMap.isOpen) || (g.shop && g.shop.invOpen));
+  }
+
   // ---- wave 13: grenades and burning
   /** Start a throw if there is a grenade and the hands are free. The grenade leaves the hand a moment later. */
   throwGrenade() {
@@ -234,7 +247,8 @@ export class Shooting {
       c.flameTick = FLAME.applyMs / 1000;
       const amount = c.flameDamage;
       c.flameDamage = 0;
-      const res = c.view.takeDamage(amount, 'body', { x: 0, y: 1, z: 0 }, 'player', { x: c.x, y: c.y + 1.1, z: c.z });
+      // source 'fire': the player's damage, named for the kill feed
+      const res = c.view.takeDamage(amount, 'body', { x: 0, y: 1, z: 0 }, 'fire', { x: c.x, y: c.y + 1.1, z: c.z });
       g.hud.hitmarker(res.killed, false);
       if (res.killed) g.audio.hitmarker(true, false);
     }

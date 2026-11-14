@@ -185,6 +185,10 @@ export class GamepadInput {
   menu(dt, r, fresh, screen) {
     const g = this.game;
     if (screen !== this.screenEl) { this.setFocus(null); this.screenEl = screen; }
+    // a screen that redraws itself (the shop after a purchase) replaces the focused button and focuses
+    // its successor: the pad follows it rather than starting over on the main button
+    if (this.focus && !this.focus.isConnected && screen.contains(document.activeElement)
+      && this.focusables(screen).includes(document.activeElement)) this.setFocus(document.activeElement);
     const had = this.validFocus(screen);
     if (!had && g.lastDevice === 'pad') this.setFocus(this.defaultFocus(screen));
     const held = r.held.map((h, i) => h && !this.mute.has(i));
