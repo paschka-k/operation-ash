@@ -2,7 +2,7 @@
 //   .autopilot/state.json      machine readable state
 //   .autopilot/manifest.md     requirements with status
 //   .autopilot/spec.md         stories grouped by epic, with acceptance and evidence
-//   .autopilot/dashboard.html  one page overview, opens with a double click
+//   .autopilot/overview.html   one page overview, opens with a double click
 // Usage: npm run dashboard        (exit code 1 when a gate fails)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -140,10 +140,10 @@ document.querySelectorAll('#f1 button').forEach(function(b){b.onclick=function()
     tr.style.display=(s==='all'||tr.classList.contains(s)||(s==='deferred'&&tr.classList.contains('placeholder')))?'':'none';});};});
 </script></body></html>
 `;
-fs.writeFileSync(path.join(dir, 'dashboard.html'), html);
+fs.writeFileSync(path.join(dir, 'overview.html'), html);
 
 // ---------------------------------------------------------------- report
 console.log(`${project.name}: ${totals.reqDone}/${totals.requirements} требований, ${totals.storiesDone}/${totals.stories} историй`);
 for (const g of results) console.log(`${g.ok ? 'PASS' : 'FAIL'} ${g.id} ${g.name}: ${g.detail}`);
-console.log('written: state.json manifest.md spec.md dashboard.html');
+console.log('written: state.json manifest.md spec.md overview.html');
 process.exit(results.every((g) => g.ok) ? 0 : 1);
