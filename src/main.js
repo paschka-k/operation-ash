@@ -15,6 +15,7 @@ import { Shooting } from './game/shooting.js';
 import { createSquad } from './enemies/squad.js';
 import { Director } from './game/director.js';
 import { createHud } from './ui/hud.js';
+import { createShop } from './ui/shop.js';
 import { clamp, lerp, lineOfSight } from './core/collision.js';
 
 const STEP = 1 / PHYSICS_HZ;
@@ -24,7 +25,7 @@ class Game {
     this.settings = loadSettings();
     setLang(this.settings.lang);
     this.t = t;
-    this.state = 'loading';   // loading | menu | playing | paused | dead | victory
+    this.state = 'loading';   // loading | menu | playing | paused | dead | victory | shop
     this.time = 0;
     this.godMode = false;
     this.acc = 0;
@@ -75,6 +76,7 @@ class Game {
     this.weapons = new Shooting(this);
     this.enemies = createSquad(this);
     this.director = new Director(this);
+    this.shop = createShop(this);      // the shop screen, the inventory overlay, money and armour on the HUD
 
     this.gr.prepareScene();
     this.hud.setLoading(0.95, t('loadAudio'));
@@ -162,6 +164,7 @@ class Game {
     this.player.reset();
     this.weapons.reset();
     this.director.start();
+    this.shop.reset();
     this.gr.uniforms.fade.value = 1;
     this.gr.uniforms.damage.value = 0;
     this.gr.uniforms.lowHealth.value = 0;
@@ -176,15 +179,70 @@ class Game {
 
   restart() { this.startGame({ noLock: this.testMode }); }
 
-  /** After the victory screen: keep fighting in the endless mode. */
+  /** After the victory screen: keep fighting in the endless mode, through the shop. */
   continueEndless() {
     if (this.state !== 'victory') return;
     if (this.deathTimer) { clearTimeout(this.deathTimer); this.deathTimer = null; }
+    this.audio.resume();
+    this.director.continueEndless();
+    this.showShop();
+  }
+
+  // ---- wave 12: the shop between waves and the revival at the wave of death
+  /** The director calls this a moment after a wave is cleared. The game stands still while the shop is open. */
+  openShop() {
+    if (this.state !== 'playing') return;
+    this.showShop();
+  }
+
+  showShop() {
+    this.state = 'shop';
+    this.input.unlock();
+    this.input.releaseAll();
+    this.audio.lowHealth = 0;
+    this.player.damageFlash = 0;
+    this.gr.uniforms.damage.value = 0;
+    this.gr.uniforms.lowHealth.value = 0;
+    this.shop.open();
+  }
+
+  /** "To battle": back into the game; the countdown to the next wave runs. */
+  leaveShop() {
+    if (this.state !== 'shop') return;
+    this.director.leaveShop();
+    this.shop.close();
+    this.input.releaseAll();
     this.state = 'playing';
     this.hud.hideScreens();
     this.hud.showHud(true);
     this.audio.resume();
-    this.director.continueEndless();
+    this.last = performance.now();
+    if (!this.testMode) this.input.lock();   // a click on the button is a user gesture; a refusal leaves the canvas click
+  }
+
+  /** "Revive at wave N": the scene is cleared, the checkpoint of that wave comes back and the wave starts again. */
+  revive() {
+    if (this.state !== 'dead' || !this.director.core.checkpoint) return;
+    if (this.deathTimer) { clearTimeout(this.deathTimer); this.deathTimer = null; }
+    this.audio.resume();
+    this.input.releaseAll();
+    this.acc = 0;
+    this.enemies.clear();
+    this.props.clear();
+    this.fx.clear();
+    this.world._places();
+    this.player.reset();
+    this.director.revive();          // money, score, counters, armour, and the arsenal through weapons.restore()
+    this.gr.uniforms.fade.value = 1;
+    this.gr.uniforms.damage.value = 0;
+    this.gr.uniforms.lowHealth.value = 0;
+    this.player.damageFlash = 0;
+    this.audio.lowHealth = 0;
+    this.shop.closeInventory();
+    this.state = 'playing';
+    this.hud.hideScreens();
+    this.hud.showHud(true);
+    this.gr.viewScene.visible = true;
     this.last = performance.now();
     if (!this.testMode) this.input.lock();
   }
@@ -198,6 +256,7 @@ class Game {
     this.input.releaseAll();
     this.audio.suspend();
     this.hud.showScreen('pause');
+    this.shop.closeInventory();
   }
 
   resume() {
@@ -239,6 +298,7 @@ class Game {
     this.state = 'dead';
     this.audio.death();
     this.input.unlock();
+    this.shop.closeInventory();
     this.deathTimer = setTimeout(() => {
       if (this.state !== 'dead') return;
       this.hud.showResult('dead', this.resultStats());
@@ -312,7 +372,7 @@ class Game {
       this.menuCamera(dt);
     }
 
-    if (st !== 'paused') {
+    if (st !== 'paused' && st !== 'shop') {
       this.fx.update(dt);
       this.audio && this.audio.update(dt);
     }
@@ -335,7 +395,7 @@ class Game {
       if ((this.frameNo = (this.frameNo || 0) + 1) % 90 === 0) this.gr.prepareScene();
     }
     this.gr.viewScene.visible = st === 'playing' || st === 'victory';
-    if (!this.skipRender) this.gr.render(st === 'paused' ? 0 : dt);
+    if (!this.skipRender) this.gr.render(st === 'paused' || st === 'shop' ? 0 : dt);
 
     // automatic quality control
     if (st === 'playing' && !document.hidden && raw < 0.2) this.watchPerformance(raw);

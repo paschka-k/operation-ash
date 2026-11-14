@@ -11,6 +11,7 @@ import {
   createArsenal, resetArsenal, tryFire, beginReload, switchTo, tickWeapons, setStance, spreadDeg, totalAmmo,
   addAmmoAll, reloadProgress, specOf, giveWeapon, cycleWeapon, WEAPON_ORDER, START_WEAPONS,
 } from '../core/weapons.js';
+import { snapshotArsenal, restoreArsenal } from '../core/weapons.js';
 import { resolveShot, damageAtRange } from '../core/combat.js';
 import { recordShots } from '../core/waves.js';
 import { createViewmodel } from '../weapons/viewmodel.js';
@@ -47,6 +48,17 @@ export class Shooting {
     this.aim.enemy = null;
     this.aim.last = null;
     this.view.endFlash();
+  }
+
+  // ---- wave 12: the checkpoint of a wave start and the revival
+  /** A deep copy of what the player carries (core snapshotArsenal). */
+  checkpoint() { return snapshotArsenal(this.arsenal); }
+
+  /** Back to a checkpoint: the trigger, the aim and the model in hand start fresh. */
+  restore(snap) {
+    this.reset();
+    if (snap) restoreArsenal(this.arsenal, snap);
+    this.view.setWeapon(this.arsenal.current);
   }
 
   adsAmount() { return this.ads; }

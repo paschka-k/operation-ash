@@ -13,6 +13,7 @@
 import {
   WEAPON_SPECS, WEAPON_ORDER, START_WEAPONS, GRENADE, effectiveSpread, bloomAfterShot, bloomDecay, fireInterval, reserveMax,
 } from './rules.js';
+import { UPGRADE, upgradedSpec } from './rules.js';
 import { clamp } from './math.js';
 
 export { WEAPON_SPECS, WEAPON_ORDER, START_WEAPONS };
@@ -33,6 +34,7 @@ export function createArsenal(start = 'rifle', owned = WEAPON_ORDER) {
     owned: list,
     weapons,
     specs: {},          // id -> spec with upgrades applied; missing means the plain row of WEAPON_SPECS
+    levels: {},         // id -> upgrade level 1..3; missing means level 0
     grenades: GRENADE.start,
     nextFireAt: 0,
     reload: null,       // {perShell, endsAt | nextShellAt, startedAt}
@@ -219,4 +221,56 @@ export function resetArsenal(a, start = 'rifle', owned = WEAPON_ORDER) {
   const fresh = createArsenal(start, owned);
   Object.keys(a).forEach((k) => delete a[k]);
   Object.assign(a, fresh);
+}
+
+// ---- wave 12: upgrades, the shop refill and the checkpoint for revivals
+
+/** Upgrade level of a weapon, 0..UPGRADE.maxLevel. */
+export function weaponLevel(a, id) { return (a.levels && a.levels[id]) || 0; }
+
+/**
+ * Put a weapon on an upgrade level: a.levels[id] and a.specs[id] (upgradedSpec of its row).
+ * The rounds a bigger magazine gains are added to the magazine. Returns false for an unknown id.
+ */
+export function setWeaponLevel(a, id, level) {
+  if (!WEAPON_SPECS[id]) return false;
+  if (!a.levels) a.levels = {};
+  const L = clamp(Math.round(level), 0, UPGRADE.maxLevel);
+  const before = specOf(a, id);
+  if (L === 0) { delete a.levels[id]; delete a.specs[id]; } else { a.levels[id] = L; a.specs[id] = upgradedSpec(WEAPON_SPECS[id], L); }
+  const after = specOf(a, id), w = a.weapons[id];
+  if (w) w.mag = clamp(w.mag + after.mag - before.mag, 0, after.mag);
+  return true;
+}
+
+/** The shop refill: a full magazine and at least the starting reserve for every owned weapon. True if anything changed. */
+export function refillArsenal(a) {
+  let any = false;
+  for (const id of a.owned) {
+    const spec = specOf(a, id), w = a.weapons[id];
+    if (w.mag < spec.mag) { w.mag = spec.mag; any = true; }
+    if (w.reserve < spec.reserve) { w.reserve = spec.reserve; any = true; }
+  }
+  return any;
+}
+
+// what changes from moment to moment and is not part of a checkpoint
+const TRANSIENT = ['reload', 'switching', 'nextFireAt', 'lastTick', 'bloom', 'stance', 'shotsFired'];
+const clone = (v) => (Array.isArray(v) ? v.map(clone)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clone(x)])) : v);
+
+/** A deep copy of what the player carries (weapons, ammo, levels, grenades, the weapon in hand). */
+export function snapshotArsenal(a) {
+  const out = {};
+  for (const [k, v] of Object.entries(a)) if (!TRANSIENT.includes(k)) out[k] = clone(v);
+  return out;
+}
+
+/** Back to a snapshot. Reloads and switches in progress are dropped, the clock (lastTick) keeps running. */
+export function restoreArsenal(a, snap) {
+  for (const [k, v] of Object.entries(snap)) if (!TRANSIENT.includes(k)) a[k] = clone(v);
+  a.reload = null;
+  a.switching = null;
+  a.nextFireAt = 0;
+  a.bloom = 0;
 }

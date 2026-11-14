@@ -159,6 +159,61 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 
 
 /* ---- wave 12: economy (money #h-money, armour #h-armor, shop, inventory) */
+.money { font-size: 20px; font-weight: 700; color: #8fd88a; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.armor { width: 240px; height: 6px; margin-bottom: 7px; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(140, 190, 255, 0.35); transform: skewX(-18deg); }
+.armor-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #3d7fc4, #8cc4ff); transition: width 0.12s linear; }
+
+.shop-screen { background: radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.86)); }
+.panel.shop { width: min(1080px, 94vw); max-height: 92vh; overflow-y: auto; margin: 0 auto; gap: 14px; padding: 26px 32px; box-sizing: border-box; }
+.shop-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
+.shop-sub { color: var(--muted); letter-spacing: 0.06em; margin-top: 4px; }
+.shop-wallet { text-align: right; }
+.shop-wallet span { display: block; font-size: 12px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+.shop-wallet b { font-size: 38px; color: #8fd88a; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.shop-h { font-size: 12px; letter-spacing: 0.22em; color: var(--accent-2); text-transform: uppercase; margin: 2px 0 6px; }
+.earn-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px 16px; }
+.earn-grid div { display: flex; flex-direction: column; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding: 2px 0 4px; }
+.earn-grid span { font-size: 12px; color: var(--muted); letter-spacing: 0.05em; }
+.earn-grid b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.earn-grid .zero b { color: var(--muted); opacity: 0.6; }
+.earn-grid .total b { color: #8fd88a; }
+.shop-cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 22px; }
+.shop-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.shop-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px; background: rgba(255, 255, 255, 0.04); border-left: 2px solid rgba(255, 255, 255, 0.15); }
+.shop-item.owned { border-left-color: var(--accent); }
+.si-text { flex: 1 1 210px; min-width: 0; }
+.shop-item > .btn, .shop-item > .si-max { flex: 0 0 auto; margin-left: auto; }
+.shop-item > .btn:only-child { flex: 1 1 auto; margin-left: 0; }
+.si-name { font-size: 17px; letter-spacing: 0.06em; }
+.si-lv { font-size: 13px; color: var(--accent-2); margin-left: 6px; letter-spacing: 0.04em; }
+.si-info { font-size: 13px; color: var(--muted); letter-spacing: 0.02em; }
+.si-info em { font-style: normal; color: #8fd88a; }
+.si-max { font-size: 13px; letter-spacing: 0.16em; color: var(--muted); text-transform: uppercase; }
+.shop .btn { font-size: 15px; padding: 9px 14px; letter-spacing: 0.12em; }
+.shop .btn:disabled { opacity: 0.45; cursor: default; transform: none; background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.12); }
+.shop .btn.poor:disabled { color: #e58a7f; }
+.shop-foot { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+.shop-msg { font-size: 15px; letter-spacing: 0.08em; color: #8fd88a; min-height: 18px; }
+.shop-msg.bad { color: #e58a7f; }
+.shop-foot .btn.primary { font-size: 19px; padding: 13px 26px; }
+
+.inv-list, .inventory { display: flex; flex-direction: column; gap: 3px; }
+.inv-row, .inv-w { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 3px 0; font-size: 14px; letter-spacing: 0.04em; }
+.inv-row span { color: var(--muted); }
+.inv-row b, .inv-ammo { font-variant-numeric: tabular-nums; }
+.inv-slot { color: var(--accent-2); min-width: 14px; }
+.inv-name { flex: 1; }
+.inv-lv { color: var(--muted); font-size: 12px; }
+.inv-w.cur .inv-name { color: var(--accent-2); }
+.inventory { position: absolute; left: 26px; top: 196px; width: 330px; padding: 12px 16px; background: rgba(10, 11, 13, 0.78); border-left: 3px solid var(--accent); text-shadow: none; }
+.inv-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; letter-spacing: 0.2em; margin-bottom: 4px; }
+.inv-head small { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; }
+
+@media (max-width: 900px) {
+  .shop-cols { grid-template-columns: 1fr; }
+  .earn-grid { grid-template-columns: 1fr 1fr; }
+  .inventory { top: 140px; width: 280px; }
+}
 
 
 /* ---- wave 13: weapons (grenades #h-gren, sniper scope #h-scope) */
