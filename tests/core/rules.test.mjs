@@ -30,7 +30,7 @@ test('weapon table matches the spec', () => {
   assert.deepEqual([r.damage, r.rpm, r.auto, r.mag, r.reserve, r.reloadMs], [22, 700, true, 30, 180, 2300]);
   assert.deepEqual([s.damage, s.pellets, s.rpm, s.auto, s.mag, s.reserve, s.reloadMs, s.perShell], [13, 8, 75, false, 6, 36, 2800, true]);
   assert.deepEqual([r.spreadBase, r.spreadMax], [0.4, 3.5]);
-  assert.deepEqual(WEAPON_ORDER, ['pistol', 'rifle', 'shotgun']);
+  assert.deepEqual(WEAPON_ORDER, ['pistol', 'rifle', 'shotgun', 'smg', 'carbine', 'sniper', 'lmg', 'minigun', 'flamer']);
   assert.ok(ZONE_MULT.head === 2.5);
 });
 test('spread: aiming narrows it, moving and jumping widen it, bloom is capped at the maximum', () => {
@@ -83,7 +83,8 @@ test('barrels have 30 hp, crates 20, the medkit heals 40 and is not used at full
 test('an ammo box gives one magazine per weapon, up to the carrying limit', () => {
   const ws = WEAPON_ORDER.map((id) => ({ id, reserve: 0 }));
   assert.equal(applyAmmoPickup(ws), true);
-  assert.deepEqual(ws.map((w) => w.reserve), [12, 30, 6]);
+  assert.deepEqual(ws.slice(0, 3).map((w) => w.reserve), [12, 30, 6]);
+  assert.deepEqual(ws.map((w) => w.reserve), WEAPON_ORDER.map((id) => WEAPON_SPECS[id].mag));
   const full = WEAPON_ORDER.map((id) => ({ id, reserve: reserveMax(WEAPON_SPECS[id]) }));
   assert.equal(applyAmmoPickup(full), false);
 });

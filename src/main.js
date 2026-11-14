@@ -14,6 +14,7 @@ import { createInput } from './player/input.js';
 import { Shooting } from './game/shooting.js';
 import { createSquad } from './enemies/squad.js';
 import { Director } from './game/director.js';
+import { createGrenades } from './game/grenades.js';
 import { createHud } from './ui/hud.js';
 import { clamp, lerp, lineOfSight } from './core/collision.js';
 
@@ -75,6 +76,7 @@ class Game {
     this.weapons = new Shooting(this);
     this.enemies = createSquad(this);
     this.director = new Director(this);
+    this.grenades = createGrenades(this);
 
     this.gr.prepareScene();
     this.hud.setLoading(0.95, t('loadAudio'));
@@ -157,6 +159,7 @@ class Game {
     this.acc = 0;
     this.enemies.clear();
     this.props.clear();
+    this.grenades.clear();
     this.fx.clear();
     this.world._places();
     this.player.reset();
@@ -222,6 +225,7 @@ class Game {
     this.input.unlock();
     this.audio.resume();
     this.enemies.clear();
+    this.grenades.clear();
     this.hud.showHud(false);
     this.hud.showScreen('menu');
     this.gr.uniforms.fade.value = 1;
@@ -308,6 +312,7 @@ class Game {
       this.enemies.update(dt);
       this.director.update(dt);
       this.props.update(dt);
+      this.grenades.update(dt);
     } else if (st === 'menu') {
       this.menuCamera(dt);
     }

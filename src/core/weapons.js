@@ -102,6 +102,7 @@ export function tryFire(a, now) {
   if (a.switching) return { ok: false, reason: 'switching' };
   if (now < a.nextFireAt) return { ok: false, reason: 'cooldown' };
   if (a.reload && !(a.reload.perShell && w.mag > 0)) return { ok: false, reason: 'reloading' };
+  if (spec.spinUpMs && (a.spin || 0) < 1) return { ok: false, reason: 'spinning' };
   if (w.mag <= 0) return { ok: false, reason: 'empty', reloading: beginReload(a, now) };
   if (a.reload) a.reload = null;                  // firing interrupts shell loading
 
@@ -149,6 +150,7 @@ export function tickWeapons(a, now) {
   const dt = clamp((now - a.lastTick) / 1000, 0, 0.1);
   a.lastTick = now;
   a.bloom = bloomDecay(a.bloom, dt);
+  spinBarrels(a, dt, events);
 
   if (a.switching) {
     if (!a.switching.swapped && now >= a.switching.swapAt) {
@@ -156,6 +158,7 @@ export function tickWeapons(a, now) {
       a.previous = a.current;
       a.current = a.switching.to;
       a.bloom = 0;
+      a.spin = 0;
       events.push({ type: 'switched', id: a.current });
     }
     if (now >= a.switching.endsAt) a.switching = null;
@@ -219,4 +222,33 @@ export function resetArsenal(a, start = 'rifle', owned = WEAPON_ORDER) {
   const fresh = createArsenal(start, owned);
   Object.keys(a).forEach((k) => delete a[k]);
   Object.assign(a, fresh);
+}
+
+// ---- wave 13: spinning barrels and the weight of a weapon
+// A weapon with spinUpMs (the minigun) fires only once its barrels turn at full speed. They spin up
+// while the trigger is held (setTrigger) and run down when it is let go. a.spin is 0..1; a missing
+// a.spin means 0, so arsenals made before this existed need nothing.
+
+/** Tell the arsenal whether the trigger (or a spin button) is held. Call it before tickWeapons. */
+export function setTrigger(a, held) { a.trigger = !!held; }
+
+/** How fast the barrels turn, 0..1. */
+export function spinLevel(a) { return a.spin || 0; }
+
+/** Advance the barrels by dt seconds (tickWeapons calls it). Pushes 'spunUp' and 'spunDown' events. */
+function spinBarrels(a, dt, events) {
+  const spec = specOf(a), before = a.spin || 0;
+  if (!spec.spinUpMs) { a.spin = 0; return; }
+  const up = a.trigger && !a.switching;
+  const rate = up ? 1000 / spec.spinUpMs : -1000 / (spec.spinDownMs || spec.spinUpMs);
+  a.spin = clamp(before + rate * dt, 0, 1);
+  if (before < 1 && a.spin >= 1) events.push({ type: 'spunUp', id: a.current });
+  else if (before > 0 && a.spin <= 0) events.push({ type: 'spunDown', id: a.current });
+}
+
+/** Multiplier of the player's speed for the weapon in hand: heavy weapons slow you down, spinning barrels more. */
+export function weaponMoveMul(a) {
+  const spec = specOf(a);
+  const spinning = spec.spinMoveMul ? 1 + (spec.spinMoveMul - 1) * spinLevel(a) : 1;
+  return (spec.moveMul ?? 1) * spinning;
 }

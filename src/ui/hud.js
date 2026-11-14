@@ -398,7 +398,31 @@ export class HUD {
   updateEconomy(dt) {}
 
   // ---- wave 13: grenades (#h-gren) and the sniper scope (#h-scope). w is weapons.hudInfo()
-  updateWeaponExtras(dt, w) {}
+  updateWeaponExtras(dt, w) {
+    const q = this.q;
+    if (!this._extras) {
+      // built once: the scope is a dark mask with a round window, a reticle and a lens shadow
+      q('h-scope').innerHTML = '<div class="scope-lens"></div><div class="scope-cross"><i class="h"></i><i class="v"></i><i class="ph l"></i><i class="ph r"></i><i class="ph b"></i><i class="dot"></i></div>';
+      q('h-gren').classList.remove('hidden');
+      this._extras = true;
+    }
+    // grenades: an icon, how many, and the key that throws one
+    const bound = (this.game.settings.bindings && this.game.settings.bindings.grenade) || ['KeyG'];
+    const key = (bound[0] || '').replace(/^Key|^Digit/, '');
+    const gren = w.grenades + '|' + key;
+    if (this.cache.gren !== gren) {
+      this.cache.gren = gren;
+      q('h-gren').innerHTML = `<span class="gren-key">${key}</span><i class="gren-ico"></i><b>×${w.grenades}</b>`;
+      q('h-gren').classList.toggle('none', w.grenades === 0);
+      q('h-gren').title = t('grenades');
+    }
+    // the scope covers the view once the rifle is up at the eye (the model is hidden from then on)
+    const on = !!w.scope && w.ads > 0.8;
+    q('h-scope').classList.toggle('hidden', !on);
+    if (on) q('h-scope').style.opacity = String(Math.min(1, (w.ads - 0.8) / 0.12));
+    // the flamer counts fuel, not rounds: the counter turns the colour of flame
+    q('h-mag').classList.toggle('fuel', !!w.fuel);
+  }
 
   drawRadar() {
     const g = this.game, ctx = this.radarCtx, S = 300, C = S / 2, R = C - 6;

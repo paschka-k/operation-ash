@@ -137,4 +137,6 @@ export const GRIP = {
   cradle: [[0.95, 0.95, 0.55], [1.0, 1.0, 0.55], [1.0, 1.0, 0.55], [1.05, 0.95, 0.5]],
   // wrapped over the fingers of the firing hand
   support: [[1.0, 1.2, 0.55], [1.05, 1.2, 0.55], [1.1, 1.2, 0.55], [1.15, 1.15, 0.5]],
+  // all four fingers round a handle (a front grip, the minigun's grips)
+  fist: [[1.2, 1.35, 0.6], [1.25, 1.35, 0.6], [1.3, 1.35, 0.6], [1.35, 1.3, 0.6]],
 };

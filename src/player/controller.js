@@ -139,7 +139,7 @@ export class Player {
     const wantSprint = input.action('sprint') && fwd > 0 && !this.crouchHeld && this.adsFactor < 0.3 && !g.weapons.firingLock();
     this.sprinting = wantSprint && b.onGround;
     if (wantSprint && !b.onGround) this.sprinting = this.sprinting || false;
-    const speed = moveSpeed({ crouched: this.crouchHeld, sprinting: this.sprinting, ads: this.adsFactor, backwards: fwd < 0 });
+    const speed = moveSpeed({ crouched: this.crouchHeld, sprinting: this.sprinting, ads: this.adsFactor, backwards: fwd < 0, weapon: g.weapons.moveMul() });
     const tx = wx * speed, tz = wz * speed;
 
     if (b.onGround) {

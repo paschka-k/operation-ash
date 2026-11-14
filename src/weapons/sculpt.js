@@ -44,6 +44,15 @@ export const PAINT = {
   strap: { color: 0x74654a, metal: 0, rough: 1 },
   sleeve: { color: 0x5a5c42, metal: 0, rough: 1 },
   sleeveDark: { color: 0x3a3c2c, metal: 0, rough: 1 },
+  // wave 13 weapons
+  olive: { color: 0x4b4f3a, metal: 0, rough: 0.78 },
+  oliveDark: { color: 0x34372a, metal: 0, rough: 0.82 },
+  lens: { color: 0x10202a, metal: 0.7, rough: 0.12 },
+  gauge: { color: 0xdedbd0, metal: 0, rough: 0.5, glow: 0.15 },
+  fuelRed: { color: 0x6a1e15, metal: 0.3, rough: 0.55 },
+  hazard: { color: 0xb8902a, metal: 0, rough: 0.7 },
+  copper: { color: 0x8a5a36, metal: 0.95, rough: 0.42 },
+  ember: { color: 0xff7a20, metal: 0, rough: 0.6, glow: 2.4 },
 };
 
 const _v = new THREE.Vector3(), _n3 = new THREE.Matrix3();
