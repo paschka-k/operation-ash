@@ -38,7 +38,7 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 @keyframes feedin { from { transform: translateX(30px); opacity: 0; } }
 @keyframes feedout { to { opacity: 0; } }
 
-.radar { position: absolute; left: 26px; top: 22px; width: 150px; height: 150px; }
+.radar { position: absolute; left: 26px; top: 22px; width: 300px; height: 300px; }
 
 .crosshair { --gap: 8px; position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 .crosshair i { position: absolute; background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 2px rgba(0, 0, 0, 0.9); }
@@ -140,7 +140,7 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 
 @media (max-width: 900px) {
   .banner-t { font-size: 40px; }
-  .radar { width: 110px; height: 110px; }
+  .radar { width: 220px; height: 220px; }
   .panel.menu { margin: 0 auto; }
 }
 
@@ -156,6 +156,65 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .mini-ctl b { color: var(--accent-2); font-weight: 600; }
 
 /* ---- wave 11: controls and screen (sprint bar #h-stam, radar, big map, key bindings, gamepad focus) */
+/* sprint bar above the health bar: dim when full, bright while draining, red while locked out */
+.stamina { width: 240px; height: 6px; margin: 0 0 9px 0; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); transform: skewX(-18deg); opacity: 0.75; transition: opacity 0.35s, border-color 0.2s; }
+.stamina-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #8fb7c9, #e3f4fb); }
+.stamina.full { opacity: 0.32; }
+.stamina.draining { opacity: 1; border-color: rgba(255, 185, 94, 0.6); }
+.stamina.draining .stamina-fill { background: linear-gradient(90deg, #e8892b, #ffd590); box-shadow: 0 0 8px rgba(255, 185, 94, 0.65); }
+.stamina.locked { opacity: 1; border-color: rgba(229, 65, 47, 0.75); }
+.stamina.locked .stamina-fill { background: linear-gradient(90deg, #7d1810, #e5412f); }
+
+/* big map of the block (an overlay in the HUD, the game runs on under it) */
+.bigmap { position: absolute; left: 50%; top: calc(50% + 40px); transform: translate(-50%, -50%); width: min(calc(100vh - 230px), 78vw); padding: 12px 16px 10px; box-sizing: content-box; background: rgba(10, 11, 13, 0.82); border-left: 4px solid var(--accent); backdrop-filter: blur(4px); animation: fadein 0.15s ease-out; }
+.bigmap-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: 18px; font-weight: 700; letter-spacing: 0.16em; margin-bottom: 8px; }
+.bigmap-hint { font-size: 12px; font-weight: 400; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+.bigmap-canvas { display: block; width: 100%; aspect-ratio: 1 / 1; }
+.bigmap-legend { display: flex; gap: 22px; font-size: 12px; color: var(--muted); margin-top: 8px; letter-spacing: 0.08em; }
+.bigmap-legend b { font-weight: 400; }
+.bigmap-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: -1px; }
+.bigmap-legend i.me { background: #fff; }
+.bigmap-legend i.foe { background: #ff3c32; }
+
+/* settings: more rows than fit a short window */
+.panel.settings { max-height: calc(100vh - 96px); overflow-y: auto; overflow-x: hidden; padding-top: 28px; padding-bottom: 28px; scrollbar-width: thin; scrollbar-color: rgba(232, 137, 43, 0.6) transparent; }
+
+/* key binding screen */
+.panel.keys { width: min(960px, 94vw); max-height: calc(100vh - 32px); overflow-y: auto; overflow-x: hidden; box-sizing: border-box; padding: 28px 36px; scrollbar-width: thin; scrollbar-color: rgba(232, 137, 43, 0.6) transparent; }
+.kb-hint { font-size: 13px; color: var(--muted); letter-spacing: 0.03em; line-height: 1.35; }
+.kb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 30px; margin-top: 4px; }
+.kb-row { display: grid; grid-template-columns: minmax(0, 1fr) 92px 92px auto; gap: 6px; align-items: center; font-size: 14px; letter-spacing: 0.03em; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 2px 0; }
+.kb-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-slot { font-family: var(--font); font-size: 14px; color: var(--accent-2); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.16); padding: 4px 6px; cursor: pointer; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.12s, border-color 0.12s; }
+.kb-slot:hover, .kb-slot:focus-visible { border-color: var(--accent); background: rgba(232, 137, 43, 0.18); outline: none; }
+.kb-slot.empty { color: rgba(255, 255, 255, 0.3); }
+.kb-slot.wait { color: #151311; background: var(--accent); border-color: var(--accent); animation: kbwait 0.9s ease-in-out infinite; }
+@keyframes kbwait { 50% { background: var(--accent-2); } }
+.kb-pad { min-width: 54px; font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; }
+.kb-buttons { display: flex; gap: 12px; margin-top: 6px; }
+.kb-buttons .btn { flex: 1; }
+
+/* controls screen: the gamepad column */
+.ctl { gap: 14px; }
+.ctl-key { flex: 1; text-align: right; }
+.ctl-pad { min-width: 120px; text-align: right; color: var(--muted); }
+
+/* gamepad focus in menus */
+.pad-focus { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+.btn.pad-focus { background: rgba(232, 137, 43, 0.22); border-color: var(--accent); transform: translateX(4px); }
+.btn.primary.pad-focus { background: var(--accent-2); outline-color: #fff !important; }
+.row.pad-row { background: rgba(232, 137, 43, 0.12); box-shadow: -8px 0 0 rgba(232, 137, 43, 0.12), 8px 0 0 rgba(232, 137, 43, 0.12); }
+.row.pad-row .pad-focus { outline-offset: 1px; }
+body.pad-active canvas#game { cursor: none; }
+
+/* the 300 px radar: keep the wave banners clear of it on windows up to 1500 px */
+@media (min-width: 901px) and (max-width: 1500px) {
+  .banner-t { font-size: 56px; }
+}
+@media (max-width: 900px) {
+  .kb-grid { grid-template-columns: 1fr; }
+  .ctl-pad { min-width: 0; }
+}
 
 
 /* ---- wave 12: economy (money #h-money, armour #h-armor, shop, inventory) */

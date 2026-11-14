@@ -53,11 +53,13 @@ export class Input {
     }, { passive: false });
 
     this._on(document, 'pointerlockchange', () => {
+      const was = this.locked;
       this.locked = document.pointerLockElement === canvas;
       if (!this.locked) this.releaseAll();
-      this.game.onPointerLockChange(this.locked);
+      this.game.onPointerLockChange(this.locked, was);
     });
-    this._on(document, 'pointerlockerror', () => this.game.onPointerLockChange(false));
+    // a refused lock was never held; main.js decides (mouse play pauses, gamepad play never asks)
+    this._on(document, 'pointerlockerror', () => this.game.onPointerLockChange(false, false));
   }
 
   _on(target, type, fn, opts) {
@@ -168,6 +170,7 @@ export class Input {
     this.edge.clear();
     this.virtual.clear();
     this.vEdge.clear();
+    this.padX = this.padY = 0;
   }
 
   // raw codes: kept for global keys (F3, Esc) and for the key binding screen
@@ -205,6 +208,30 @@ export class Input {
     if (dy) this.mouseDY += dy;
     if (wheel) this.wheel += wheel;
   }
+
+  // ---- wave 11: analog sources (gamepad)
+  /** The analog move vector of a stick: x right, y forward, each -1..1. Merged in moveAxes(). */
+  setPadMove(x, y) { this.padX = x; this.padY = y; }
+
+  /**
+   * Movement in the local frame: x right, y forward. Keys give -1, 0 or 1, a stick anything in
+   * between, so the speed follows the deflection. The length never exceeds 1.
+   */
+  moveAxes() {
+    let x = (this.action('right') ? 1 : 0) - (this.action('left') ? 1 : 0) + (this.padX || 0);
+    let y = (this.action('forward') ? 1 : 0) - (this.action('back') ? 1 : 0) + (this.padY || 0);
+    x = Math.max(-1, Math.min(1, x));
+    y = Math.max(-1, Math.min(1, y));
+    const m = Math.hypot(x, y);
+    if (m > 1) { x /= m; y /= m; }
+    return { x, y };
+  }
+
+  /** Turn the view like the mouse does, in mouse counts (the gamepad's right stick). */
+  addLook(dx, dy) { this.mouseDX += dx; this.mouseDY += dy; }
+
+  /** Cycle owned weapons like the wheel does: +1 next, -1 previous (the gamepad's Y). */
+  addWheel(step) { this.wheel += step; }
 }
 
 /** Keyboard, mouse and pointer lock. Returns {state, lock(), unlock(), consumeWheel(), setSensitivity(v), dispose()}. */

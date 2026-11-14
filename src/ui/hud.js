@@ -2,6 +2,8 @@
 
 import * as THREE from 'three';
 import { t, setLang, getLang, QUALITY_ORDER } from '../config.js';
+import { enemyMarkerAlpha, WEAPON_ORDER } from '../core/rules.js';
+import { keyName, bindingText, padHint } from './keys.js';
 
 // Screens are full-window panels; one is shown at a time. Other modules add theirs with addScreen().
 const SCREENS = ['loading', 'menu', 'pause', 'settings', 'controls', 'dead', 'victory'];
@@ -40,7 +42,7 @@ export class HUD {
       <div class="scorebox"><div class="score-label" data-t="score"></div><div class="score-val" id="h-score">0</div><div class="money hidden" id="h-money"></div><div class="fps" id="h-fps"></div></div>
       <div class="scope hidden" id="h-scope"></div>
       <div class="killfeed" id="h-feed"></div>
-      <canvas class="radar" id="h-radar" width="300" height="300"></canvas>
+      <canvas class="radar" id="h-radar" width="600" height="600"></canvas>
       <div class="crosshair" id="h-xh"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
       <div class="enemybar" id="h-ebar"><div class="eb-name" id="h-ename"></div><div class="eb-track"><div class="eb-fill" id="h-efill"></div></div></div>
       <div class="hitmarker" id="h-hit"><i></i><i></i><i></i><i></i></div>
@@ -81,7 +83,7 @@ export class HUD {
         <button class="btn primary" id="btn-play" data-t="play"></button>
         <button class="btn" id="btn-settings" data-t="settings"></button>
         <button class="btn" id="btn-controls" data-t="controls"></button>
-        <div class="mini-ctl">${['move', 'jump', 'sprint', 'fire', 'aim', 'reload', 'switch', 'pause'].map((k) => `<div><span data-t="ctl_${k}"></span><b data-t="k_${k}"></b></div>`).join('')}</div>
+        <div class="mini-ctl">${['move', 'jump', 'sprint', 'fire', 'aim', 'reload', 'switch', 'pause'].map((k) => `<div><span data-t="ctl_${k}"></span><b data-k="${k}" data-kp="1"></b></div>`).join('')}</div>
         <div class="hint" data-t="hintStart"></div>
       </div>`);
 
@@ -110,11 +112,16 @@ export class HUD {
         <label class="row chk"><input type="checkbox" id="s-inv"><span data-t="invertY"></span></label>
         <label class="row chk"><input type="checkbox" id="s-fps"><span data-t="showFps"></span></label>
         <label class="row chk" id="row-scans"><input type="checkbox" id="s-scans"><span data-t="scans"></span></label>
+        <label class="row"><span data-t="radarEnemies"></span><select id="s-renemy"><option value="fired" data-t="re_fired"></option><option value="all" data-t="re_all"></option></select></label>
+        <label class="row"><span data-t="padSens"></span><input type="range" id="s-psens" min="0.3" max="3" step="0.05"><output id="o-psens"></output></label>
+        <label class="row chk"><input type="checkbox" id="s-pinv"><span data-t="padInvertY"></span></label>
+        <label class="row"><span data-t="padLayout"></span><select id="s-playout"><option value="auto" data-t="pl_auto"></option><option value="xbox">Xbox</option><option value="playstation">PlayStation</option><option value="nintendo">Nintendo</option></select></label>
+        <button class="btn" id="btn-keys" data-t="keysBtn"></button>
         <button class="btn" id="btn-sback" data-t="back"></button>
       </div>`);
 
-    const ctl = ['move', 'look', 'jump', 'sprint', 'crouch', 'fire', 'aim', 'reload', 'switch', 'pause', 'fps']
-      .map((k) => `<div class="ctl"><span class="ctl-name" data-t="ctl_${k}"></span><span class="ctl-key" data-t="k_${k}"></span></div>`).join('');
+    const ctl = ['move', 'look', 'jump', 'sprint', 'crouch', 'fire', 'aim', 'reload', 'switch', 'map', 'pause', 'fps']
+      .map((k) => `<div class="ctl"><span class="ctl-name" data-t="ctl_${k}"></span><span class="ctl-key" data-k="${k}"></span><span class="ctl-pad" data-pk="${k}"></span></div>`).join('');
     mk('controls', `
       <div class="panel controls">
         <div class="logo small" data-t="controls"></div>
@@ -188,6 +195,12 @@ export class HUD {
     q('s-inv').addEventListener('change', (e) => { s.invertY = e.target.checked; g.saveSettings(); });
     q('s-fps').addEventListener('change', (e) => { s.showFps = e.target.checked; g.saveSettings(); });
     q('s-scans').addEventListener('change', (e) => { s.scans = e.target.checked; g.saveSettings(); });
+    // wave 11: map markers, gamepad, key bindings
+    q('s-renemy').addEventListener('change', (e) => { s.radarEnemies = e.target.value; g.saveSettings(); });
+    bind('s-psens', 'o-psens', 'padSens', (v) => v.toFixed(2));
+    q('s-pinv').addEventListener('change', (e) => { s.padInvertY = e.target.checked; g.saveSettings(); });
+    q('s-playout').addEventListener('change', (e) => { s.padLayout = e.target.value; g.saveSettings(); this.refreshBindings(); });
+    q('btn-keys').onclick = () => { if (g.keys) g.keys.open(); };
     this.syncSettings();
   }
 
@@ -205,6 +218,10 @@ export class HUD {
     q('s-fps').checked = s.showFps;
     q('s-scans').checked = s.scans !== false;
     q('row-scans').style.display = this.game.scansFound ? '' : 'none';   // a build without scans has nothing to switch
+    q('s-renemy').value = s.radarEnemies === 'all' ? 'all' : 'fired';
+    q('s-psens').value = s.padSens; q('o-psens').textContent = (+s.padSens || 1).toFixed(2);
+    q('s-pinv').checked = !!s.padInvertY;
+    q('s-playout').value = s.padLayout || 'auto';
   }
 
   refreshLang() {
@@ -213,6 +230,43 @@ export class HUD {
     document.title = t('title');
     this.cache = {};
     this.syncSettings();
+    this.refreshBindings();
+  }
+
+  /**
+   * Texts that name keys and gamepad buttons: the controls screen, the main menu's short list,
+   * the key screen and the reload prompt. Call after the bindings, the language, the prompt
+   * layout or the device in use changed.
+   */
+  refreshBindings() {
+    const g = this.game, b = (g.input && g.input.bindings) || g.settings.bindings || {};
+    const first = (a) => keyName((b[a] || [])[0]);
+    // slots of the weapons that exist, '1–3' when they are the plain digit keys in a row
+    const slots = WEAPON_ORDER.map((_, i) => (b['slot' + (i + 1)] || [])[0]).filter(Boolean);
+    const digits = slots.every((c, i) => c === 'Digit' + (i + 1));
+    const slotText = digits && slots.length > 2 ? '1–' + slots.length : slots.map(keyName).join(', ');
+    const text = {
+      move: ['forward', 'left', 'back', 'right'].map(first).join(' '),
+      look: t('k_look'),
+      jump: bindingText(b, 'jump'), sprint: bindingText(b, 'sprint'), crouch: bindingText(b, 'crouch'),
+      fire: bindingText(b, 'fire'), aim: bindingText(b, 'aim'), reload: bindingText(b, 'reload'),
+      switch: [slotText, t('k_wheel'), ...(b.lastWeapon || []).map(keyName)].filter(Boolean).join(', '),
+      map: bindingText(b, 'map'), pause: 'Esc', fps: 'F3',
+    };
+    const pad = g.pad && g.pad.showHints() ? g.pad.layout() : null;
+    const padText = (k) => (!pad ? '' : padHint(k === 'move' ? 'forward' : k, pad));
+    this.root.querySelectorAll('[data-k]').forEach((n) => {
+      const k = n.dataset.k, p = n.dataset.kp ? padText(k) : '';
+      n.textContent = (text[k] ?? '') + (p ? ' · ' + p : '');
+    });
+    this.root.querySelectorAll('[data-pk]').forEach((n) => {
+      n.textContent = padText(n.dataset.pk);
+      n.classList.toggle('hidden', !pad);
+    });
+    // the prompt on an empty magazine names what reloads with the device in use
+    this.reloadKey = g.lastDevice === 'pad' && pad ? padHint('reload', pad) : first('reload');
+    delete this.cache['h-awarn'];
+    if (g.keys) g.keys.refresh();
   }
 
   openSettings(from) { this.backTo = from; this.syncSettings(); this.showScreen('settings'); }
@@ -232,6 +286,8 @@ export class HUD {
   }
 
   showScreen(name) {
+    // leaving the key screen in any way (back, resume, pause, menu, a new game) ends a key wait
+    if (name !== 'keys' && this.game.keys) this.game.keys.cancel();
     for (const s of this.screens) {
       const n = document.getElementById('screen-' + s);
       if (n) n.classList.toggle('hidden', s !== name);
@@ -363,7 +419,7 @@ export class HUD {
     const rl = this.q('h-reload');
     rl.classList.toggle('on', w.reloading);
     if (w.reloading) this.q('h-rfill').style.width = (w.progress * 100).toFixed(0) + '%';
-    const warn = w.reloading ? '' : w.mag === 0 ? (w.reserve === 0 ? t('noAmmo') : t('reload') + ' [R]') : w.mag <= w.magSize * 0.3 ? t('lowAmmo') : '';
+    const warn = w.reloading ? '' : w.mag === 0 ? (w.reserve === 0 ? t('noAmmo') : t('reload') + ' [' + (this.reloadKey || 'R') + ']') : w.mag <= w.magSize * 0.3 ? t('lowAmmo') : '';
     this.set('h-awarn', warn);
 
     // crosshair gap follows spread; hidden while aiming
@@ -401,7 +457,23 @@ export class HUD {
   }
 
   // ---- wave 11: the sprint bar above the health bar (#h-stam, #h-sfill)
-  updateStamina(dt) {}
+  // Always shown: dim when full, bright while it drains, red while locked after running dry.
+  updateStamina(dt) {
+    const st = this.game.player.stamina;
+    if (!st) return;
+    const box = this.stamBox || (this.stamBox = this.q('h-stam'));
+    const fill = this.stamFill || (this.stamFill = this.q('h-sfill'));
+    box.classList.remove('hidden');
+    const w = (st.value * 100).toFixed(1) + '%';
+    if (this.stamW !== w) { this.stamW = w; fill.style.width = w; }
+    const state = st.locked ? 'locked' : st.draining ? 'draining' : st.value >= 1 ? 'full' : 'refill';
+    if (this.stamState !== state) {
+      this.stamState = state;
+      box.classList.toggle('locked', state === 'locked');
+      box.classList.toggle('draining', state === 'draining');
+      box.classList.toggle('full', state === 'full');
+    }
+  }
 
   // ---- wave 12: money (#h-money) and armour (#h-armor, #h-afill)
   updateEconomy(dt) { if (this.game.shop) this.game.shop.updateHud(dt); }
@@ -409,14 +481,25 @@ export class HUD {
   // ---- wave 13: grenades (#h-gren) and the sniper scope (#h-scope). w is weapons.hudInfo()
   updateWeaponExtras(dt, w) {}
 
+  // Drawn in a 300 x 300 layout (the size on screen in CSS pixels) on a canvas of twice that, so it stays sharp.
   drawRadar() {
-    const g = this.game, ctx = this.radarCtx, S = 300, C = S / 2, R = C - 6;
+    const g = this.game, ctx = this.radarCtx, S = 300, C = S / 2, R = C - 4;
     const p = g.player;
     const range = 42, k = R / range;
-    ctx.clearRect(0, 0, S, S);
+    const px = this.radar.width / S;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.radar.width, this.radar.height);
+    ctx.setTransform(px, 0, 0, px, 0, 0);
     ctx.save();
     ctx.beginPath(); ctx.arc(C, C, R, 0, Math.PI * 2); ctx.clip();
     ctx.fillStyle = 'rgba(8,10,12,0.55)'; ctx.fillRect(0, 0, S, S);
+    // a ring at half the range and the view cone
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(C, C, R / 2, 0, Math.PI * 2); ctx.stroke();
+    const cone = ctx.createRadialGradient(C, C, 0, C, C, R);
+    cone.addColorStop(0, 'rgba(255,255,255,0.16)'); cone.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = cone;
+    ctx.beginPath(); ctx.moveTo(C, C); ctx.arc(C, C, R, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); ctx.closePath(); ctx.fill();
     const sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
     const toScreen = (wx, wz) => {
       const dx = wx - p.pos.x, dz = wz - p.pos.z;
@@ -426,28 +509,32 @@ export class HUD {
       return [C + sx * k, C - sf * k];
     };
     // building outlines
-    ctx.strokeStyle = 'rgba(190,200,210,0.35)'; ctx.fillStyle = 'rgba(120,130,140,0.18)'; ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(190,200,210,0.4)'; ctx.fillStyle = 'rgba(120,130,140,0.2)'; ctx.lineWidth = 1.5;
     for (const f of g.world.footprints) {
       const pts = [[f.x0, f.z0], [f.x1, f.z0], [f.x1, f.z1], [f.x0, f.z1]].map(([x, z]) => toScreen(x, z));
       ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-    // enemies that fired recently show up as red dots, as in the genre
+    // enemies as red dots: by default only those that fired recently, as in the genre (settings.radarEnemies)
+    const mode = g.settings.radarEnemies;
+    let shown = 0;
     for (const e of g.enemies.list) {
       if (!e.alive) continue;
-      const since = g.time - e.lastFired;
-      if (since > 2.2) continue;
+      const a = enemyMarkerAlpha(mode, g.time - e.lastFired);
+      if (a <= 0) continue;
       const [x, y] = toScreen(e.pos.x, e.pos.z);
-      ctx.fillStyle = `rgba(255,60,50,${Math.max(0.2, 1 - since / 2.2)})`;
-      ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,60,50,${a.toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      shown++;
     }
+    this.radarShown = shown; // enemies drawn last frame (tests read it)
     ctx.restore();
     // rim and player marker
-    ctx.strokeStyle = 'rgba(232,137,43,0.8)'; ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(232,137,43,0.8)'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(C, C, R, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.moveTo(C, C - 11); ctx.lineTo(C + 8, C + 9); ctx.lineTo(C, C + 4); ctx.lineTo(C - 8, C + 9); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(C, C - 9); ctx.lineTo(C + 6.5, C + 7); ctx.lineTo(C, C + 3.5); ctx.lineTo(C - 6.5, C + 7); ctx.closePath(); ctx.fill();
   }
 }
 

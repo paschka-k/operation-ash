@@ -55,6 +55,10 @@ export const DEFAULT_SETTINGS = {
   scans: true,
   bindings: null,      // filled by loadSettings from DEFAULT_BINDINGS and what was saved
   // ---- wave 11 settings (controls and screen)
+  radarEnemies: 'fired', // enemies on the radar and the big map: 'fired' (just shot) or 'all' (every living one)
+  padSens: 1.0,          // gamepad look speed, a multiplier of GAMEPAD.lookYaw / lookPitch
+  padInvertY: false,
+  padLayout: 'auto',     // gamepad button prompts: 'auto' (from the pad's name), 'xbox', 'playstation', 'nintendo'
   // ---- wave 12 settings (economy)
   // ---- wave 13 settings (weapons)
 };
@@ -150,6 +154,29 @@ const STR = {
     qualityDropped: 'Качество снижено до',
 
     // ---- wave 11: controls and screen
+    radarEnemies: 'Враги на карте',
+    re_fired: 'Только стрелявшие', re_all: 'Все живые',
+    padSens: 'Чувствительность геймпада',
+    padInvertY: 'Инвертировать геймпад по вертикали',
+    padLayout: 'Подписи кнопок геймпада',
+    pl_auto: 'Автоматически',
+    keysBtn: 'Клавиши',
+    keysTitle: 'Клавиши',
+    keysHint: 'Нажмите на ячейку, затем клавишу или кнопку мыши. Esc отменяет, Backspace очищает ячейку. Клавиша, занятая другим действием, переходит сюда.',
+    keysPress: 'Нажмите…',
+    keysReset: 'Сбросить по умолчанию',
+    keysNone: '—',
+    act_forward: 'Вперёд', act_back: 'Назад', act_left: 'Влево', act_right: 'Вправо',
+    act_jump: 'Прыжок', act_sprint: 'Бег', act_crouch: 'Присесть', act_fire: 'Огонь', act_aim: 'Прицелиться',
+    act_reload: 'Перезарядка', act_lastWeapon: 'Прошлое оружие', act_grenade: 'Граната',
+    act_slot: 'Слот {n}', act_inventory: 'Инвентарь', act_map: 'Карта',
+    kn_space: 'Пробел', kn_mouse0: 'ЛКМ', kn_mouse1: 'СКМ', kn_mouse2: 'ПКМ', kn_mouse: 'Мышь {n}',
+    kn_rshift: 'Пр. Shift', kn_rctrl: 'Пр. Ctrl', kn_ralt: 'Пр. Alt',
+    k_wheel: 'колесо',
+    ctl_map: 'Карта',
+    pad_lstick: 'левый стик', pad_rstick: 'правый стик',
+    padUnsupported: 'Геймпад не поддерживается в этом браузере',
+    mapTitle: 'КАРТА КВАРТАЛА', mapClose: 'закрыть', mapNorth: 'С', mapYou: 'Вы',
 
     // ---- wave 12: economy
     moneyFmt: '{n} $',
@@ -269,6 +296,29 @@ const STR = {
     qualityDropped: 'Quality lowered to',
 
     // ---- wave 11: controls and screen
+    radarEnemies: 'Enemies on the map',
+    re_fired: 'Only those that fired', re_all: 'All living',
+    padSens: 'Gamepad sensitivity',
+    padInvertY: 'Invert gamepad Y',
+    padLayout: 'Gamepad button prompts',
+    pl_auto: 'Automatic',
+    keysBtn: 'Key bindings',
+    keysTitle: 'Key bindings',
+    keysHint: 'Click a slot, then press a key or a mouse button. Esc cancels, Backspace clears the slot. A key used by another action moves here.',
+    keysPress: 'Press…',
+    keysReset: 'Reset to defaults',
+    keysNone: '—',
+    act_forward: 'Forward', act_back: 'Back', act_left: 'Left', act_right: 'Right',
+    act_jump: 'Jump', act_sprint: 'Sprint', act_crouch: 'Crouch', act_fire: 'Fire', act_aim: 'Aim down sights',
+    act_reload: 'Reload', act_lastWeapon: 'Last weapon', act_grenade: 'Grenade',
+    act_slot: 'Slot {n}', act_inventory: 'Inventory', act_map: 'Map',
+    kn_space: 'Space', kn_mouse0: 'LMB', kn_mouse1: 'MMB', kn_mouse2: 'RMB', kn_mouse: 'Mouse {n}',
+    kn_rshift: 'R-Shift', kn_rctrl: 'R-Ctrl', kn_ralt: 'R-Alt',
+    k_wheel: 'wheel',
+    ctl_map: 'Map',
+    pad_lstick: 'left stick', pad_rstick: 'right stick',
+    padUnsupported: 'This controller is not supported in this browser',
+    mapTitle: 'BLOCK MAP', mapClose: 'close', mapNorth: 'N', mapYou: 'You',
 
     // ---- wave 12: economy
     moneyFmt: '${n}',

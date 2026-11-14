@@ -6,6 +6,10 @@ import { stepBody, standingHeight, overlapsAny, clamp, damp, lerp } from '../cor
 import { PLAYER, MAP_HALF } from '../config.js';
 import { moveSpeed } from '../core/rules.js';
 import { damagePlayer } from '../core/waves.js';
+import { createStamina, resetStamina, stepStamina } from '../core/stamina.js';
+
+/** Radians of view turn per mouse count at sensitivity 1 (the gamepad converts its look with it). */
+export const LOOK_RAD_PER_COUNT = 0.0022;
 
 export class Player {
   constructor(game) {
@@ -38,6 +42,7 @@ export class Player {
     this.forward = new THREE.Vector3();
     this.eye = new THREE.Vector3();
     this.damageFlash = 0;
+    this.stamina = createStamina();   // sprint pool 0..1 (core/stamina.js), shown by the HUD
   }
 
   reset() {
@@ -52,6 +57,7 @@ export class Player {
     this.shakeAmt = 0;
     this.landDip = 0;
     this.damageFlash = 0;
+    resetStamina(this.stamina);
   }
 
   // names of the controller contract
@@ -86,7 +92,7 @@ export class Player {
   look(dx, dy) {
     const s = this.game.settings;
     const zoom = this.game.weapons ? this.game.weapons.zoomRatio() : 1;
-    const k = 0.0022 * s.sens * zoom;
+    const k = LOOK_RAD_PER_COUNT * s.sens * zoom;
     this.lookDX = dx * k;
     this.lookDY = dy * k * (s.invertY ? -1 : 1);
     this.yaw -= this.lookDX;
@@ -114,9 +120,11 @@ export class Player {
     const b = this.body;
     const g = this.game;
 
-    // input vector in the local frame
-    const fwd = (input.action('forward') ? 1 : 0) - (input.action('back') ? 1 : 0);
-    const str = (input.action('right') ? 1 : 0) - (input.action('left') ? 1 : 0);
+    // input vector in the local frame: keys give -1, 0 or 1, a gamepad stick anything in between
+    // (the speed below follows its length)
+    const ax = input.moveAxes ? input.moveAxes() : null;
+    const fwd = ax ? ax.y : (input.action('forward') ? 1 : 0) - (input.action('back') ? 1 : 0);
+    const str = ax ? ax.x : (input.action('right') ? 1 : 0) - (input.action('left') ? 1 : 0);
 
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     let wx = -sy * fwd + cy * str;
@@ -137,7 +145,7 @@ export class Player {
 
     // speed
     const wantSprint = input.action('sprint') && fwd > 0 && !this.crouchHeld && this.adsFactor < 0.3 && !g.weapons.firingLock();
-    this.sprinting = wantSprint && b.onGround;
+    this.sprinting = stepStamina(this.stamina, dt, wantSprint) && b.onGround; // stops when the pool runs dry
     if (wantSprint && !b.onGround) this.sprinting = this.sprinting || false;
     const speed = moveSpeed({ crouched: this.crouchHeld, sprinting: this.sprinting, ads: this.adsFactor, backwards: fwd < 0 });
     const tx = wx * speed, tz = wz * speed;

@@ -26,7 +26,42 @@ export const PLAYER = {
 PLAYER.jump = Math.sqrt(2 * PLAYER.gravity * PLAYER.jumpHeight);
 
 // ---- wave 11: sprint stamina
+/**
+ * Sprint spends a pool of stamina (0..1, see core/stamina.js). A full pool lasts drainSeconds of
+ * sprinting; refillDelay seconds after the last sprint it refills from empty to full in
+ * refillSeconds. Run dry and sprint stays locked until the pool is back to unlockAt.
+ */
+export const STAMINA = { drainSeconds: 3, refillSeconds: 4, refillDelay: 0.8, unlockAt: 0.3 };
 
+/** Enemies on the radar and the big map. 'fired' shows only those that shot within firedSeconds. */
+export const MAP_MARKERS = { firedSeconds: 2.2, fadeMin: 0.2, allAlpha: 0.75 };
+
+/**
+ * Opacity of an enemy marker on the maps, 0 meaning not shown. mode is settings.radarEnemies:
+ * 'fired' (default) shows an enemy for a moment after it fired, fading; 'all' shows every living
+ * enemy, the ones that just fired at full strength.
+ */
+export function enemyMarkerAlpha(mode, sinceFired) {
+  const fresh = sinceFired >= 0 && sinceFired <= MAP_MARKERS.firedSeconds;
+  if (mode === 'all') return fresh ? 1 : MAP_MARKERS.allAlpha;
+  return fresh ? Math.max(MAP_MARKERS.fadeMin, 1 - sinceFired / MAP_MARKERS.firedSeconds) : 0;
+}
+
+/**
+ * Gamepad feel (core/gamepad.js). Dead zones are radial, on the stick deflection 0..1; the curve
+ * is the exponent of the response after the dead zone (1 linear, 2 finer near the centre).
+ * Look speeds are radians per second at full deflection with settings.padSens = 1.
+ */
+export const GAMEPAD = {
+  moveDeadzone: 0.16, lookDeadzone: 0.12, outerDeadzone: 0.95,
+  moveCurve: 1, lookCurve: 1.8,
+  lookYaw: 3.4, lookPitch: 2.3,
+  triggerOn: 0.35, triggerOff: 0.2,       // trigger hysteresis on the analog value
+  sprintKeep: 0.35,                       // the L3 sprint holds while the stick pushes forward this much
+  navOn: 0.5, navOff: 0.3,                // menu navigation with the left stick
+  navDelay: 0.38, navRepeat: 0.12,        // a held direction repeats after navDelay, then every navRepeat
+  activeDeflection: 0.5,                  // a stick counts as "the player uses the pad" from here (after the dead zone)
+};
 
 /** Health after regeneration. */
 export function regenHealth(health, max, sinceDamage, dt) {
