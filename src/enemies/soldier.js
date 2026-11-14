@@ -224,7 +224,39 @@ const LOOK = {
   grunt: { helmet: true, pack: 'small', pouches: 3, camo: 1 },
   rusher: { headset: true, pack: 'none', pouches: 2, elbowPads: true, camo: 0.55 },
   heavy: { helmet: true, visor: true, pack: 'large', pouches: 3, armor: true, elbowPads: true, camo: 0.8 },
+  // ---- wave 14: riders and bosses (a first cut; the bosses' own armour pieces come with their look)
+  scooterRider: { headset: true, pack: 'none', pouches: 1, camo: 0.35 },
+  skater: { pack: 'small', pouches: 2, elbowPads: true, camo: 0.3 },
+  biker: { helmet: true, visor: true, pack: 'none', pouches: 2, elbowPads: true, camo: 0.45 },
+  bossBiker: { helmet: true, visor: true, pack: 'none', pouches: 3, armor: true, elbowPads: true, camo: 0.5 },
+  bossCommander: { helmet: true, visor: true, pack: 'large', pouches: 4, armor: true, elbowPads: true, camo: 0.9 },
 };
+
+/**
+ * Pose a soldier for riding: 'stand' upright on a scooter's deck, 'skate' knees bent on a board,
+ * 'seat' on a motorbike with the thighs forward and the shins down to the footpegs. The hip bone keeps
+ * its standing height (5 cm lower in the skater's crouch, so his feet stay on the board), so the rider's
+ * hit zones stay where core/combat measures them; VEHICLES.seatY in core/rules puts the body frame so
+ * that the feet stand on the deck or the pelvis rests on the seat. A plain first cut: the feet and the
+ * lean are refined with the vehicles' own look.
+ */
+export function setRidePose(model, stance) {
+  const [l, r] = model.legs;
+  model.hips.position.y = stance === 'skate' ? 0.88 : 0.93;
+  if (stance === 'seat') {
+    l.hip.rotation.x = r.hip.rotation.x = -1.35;
+    l.knee.rotation.x = r.knee.rotation.x = 1.45;
+    model.torso.rotation.x = 0.32;
+  } else if (stance === 'skate') {
+    l.hip.rotation.x = -0.35; r.hip.rotation.x = 0.2;
+    l.knee.rotation.x = 0.6; r.knee.rotation.x = 0.35;
+    model.torso.rotation.x = 0.18;
+  } else {
+    l.hip.rotation.x = -0.12; r.hip.rotation.x = 0.08;
+    l.knee.rotation.x = 0.12; r.knee.rotation.x = 0.05;
+    model.torso.rotation.x = 0.1;
+  }
+}
 
 // Where the weapon sits in the frame of the standing body (x: the soldier's left, z: forward),
 // where the hands hold it and how far the upper body turns into the stance.

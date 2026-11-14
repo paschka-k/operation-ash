@@ -508,6 +508,25 @@ export class AudioSys {
     });
   }
 
+  // ---- wave 14: vehicles and bosses (silent stubs for now; their voices come with the vehicles' look)
+  /**
+   * A looping voice for one vehicle of `kind` (a key of VEHICLES). update(pos, speed) moves it and
+   * sets its pitch every frame, stop() ends it. At most three play at once, the nearest ones.
+   */
+  engine(kind) {
+    return { kind, update(pos, speed) {}, stop() {} };
+  }
+
+  /** A vehicle hits the ground and slides. */
+  vehicleCrash(pos) {
+    if (!this.ready) return;
+  }
+
+  /** A boss arrives. */
+  bossIntro() {
+    if (!this.ready) return;
+  }
+
   // --------------------------------------------------------------- ambience
   _startAmbience() {
     const ctx = this.ctx;

@@ -21,6 +21,7 @@ import { clamp, lerp, lineOfSight } from './core/collision.js';
 import { createGamepad } from './player/gamepad.js';
 import { createBigMap } from './ui/bigmap.js';
 import { createKeyScreen } from './ui/keys.js';
+import { createGpuInfo } from './ui/gpu.js';
 
 const STEP = 1 / PHYSICS_HZ;
 
@@ -57,6 +58,8 @@ class Game {
       console.error(e);
       return;
     }
+    // wave 14: the graphics card in the settings, and the hint in the main menu on integrated graphics
+    this.gpuInfo = createGpuInfo(this);
 
     const aniso = Math.min(QUALITY[this.settings.quality].aniso, this.gr.renderer.capabilities.getMaxAnisotropy());
     // Photoscans are optional files. The setting and ?noscans in the address leave them out.

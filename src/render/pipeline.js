@@ -15,6 +15,20 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { CSM } from 'three/addons/csm/CSM.js';
 import { makeDetailNormal, makeMacroNoise } from './materials.js';
 import { QUALITY } from '../config.js';
+import { gpuInfo } from '../core/gpu.js';
+
+/**
+ * The graphics a WebGL context runs on. The unmasked name comes from WEBGL_debug_renderer_info where
+ * the browser still offers it, otherwise from RENDERER (current Chrome reports the real device there).
+ */
+function readGpu(gl) {
+  let raw = '';
+  try {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    raw = (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '';
+  } catch (e) { /* a lost context answers nothing */ }
+  return gpuInfo(raw);
+}
 
 const SUN_ELEVATION = 17;   // degrees, low golden-hour sun
 const SUN_AZIMUTH = 250;    // degrees
@@ -136,12 +150,20 @@ export class GameRenderer {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
 
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: false,
-      powerPreference: 'high-performance',
-      stencil: false,
-    });
+    // Always ask for the fastest graphics card (G01). A browser that refuses a context with that hint
+    // gets a second try with its default, and the game runs instead of stopping at the loading screen.
+    const contextOptions = { canvas, antialias: false, stencil: false };
+    try {
+      this.renderer = new THREE.WebGLRenderer({ ...contextOptions, powerPreference: 'high-performance' });
+      this.powerPreference = 'high-performance';
+    } catch (e) {
+      console.warn('[gpu] the browser refused a WebGL context with powerPreference "high-performance", retrying with its default:', e && e.message ? e.message : e);
+      this.renderer = new THREE.WebGLRenderer(contextOptions);
+      this.powerPreference = 'default';
+    }
+    /** Which graphics the context runs on: {raw, name, kind, hint} (core/gpu). */
+    this.gpu = readGpu(this.renderer.getContext());
+    console.info(`[gpu] ${this.gpu.name || 'unknown graphics'} (${this.gpu.kind}), powerPreference ${this.powerPreference}`);
     this.webgl2 = this.renderer.capabilities.isWebGL2 !== false;
     const r = this.renderer;
     r.outputColorSpace = THREE.SRGBColorSpace;

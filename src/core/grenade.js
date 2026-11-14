@@ -4,11 +4,12 @@
 //   const g = launchGrenade({ eye, dir, vel, now, colliders });   // leaves the hand
 //   stepGrenade(g, dt, colliders);    // gravity, bounces off boxes and the ground, rolls to a stop
 //   grenadeDue(g, now)                // the fuse has burnt down: blow it up (game layer)
+//   const e = launchGrenadeAt({ from, target, now });   // a bot's lob at a spot on the ground (wave 14)
 //
 // The grenade is a small ball. Every move is swept against the colliders grown by its radius, so a
 // fast throw cannot pass through a thin wall. The numbers are in GRENADE (core/rules.js).
 
-import { GRENADE } from './rules.js';
+import { GRENADE, BOSS } from './rules.js';
 import { rayBox } from './collision.js';
 
 const SUBSTEP = 1 / 240;       // seconds; a throw moves about 6 cm per substep
@@ -63,6 +64,25 @@ export function launchGrenade({ eye, dir, vel = { x: 0, y: 0, z: 0 }, now = 0, c
   const k = h ? Math.max(0, h.t - SKIN * 2) : G.reach;
   g.x += dir.x * k; g.y += dir.y * k; g.z += dir.z * k;
   return g;
+}
+
+/**
+ * A grenade lobbed by a bot from `from` (its hand, {x, y, z}) at a spot on the ground `target` ({x, z}).
+ * The velocity is solved so that, without anything in the way, the ball first touches the ground at the
+ * target after BOSS.throwTime (longer for a longer throw). Same object as launchGrenade, same flight
+ * (stepGrenade), same fuse; who threw it is for the game layer to note.
+ */
+export function launchGrenadeAt({ from, target, now = 0 }) {
+  const G = GRENADE, T = BOSS.throwTime;
+  const dx = target.x - from.x, dz = target.z - from.z;
+  const t = Math.min(T.max, Math.max(T.min, T.base + T.perMetre * Math.hypot(dx, dz)));
+  // the ball touches the ground when its centre is one radius above it
+  const rise = G.radius - from.y;
+  return {
+    x: from.x, y: from.y, z: from.z,
+    vx: dx / t, vy: (rise + 0.5 * G.gravity * t * t) / t, vz: dz / t,
+    born: now, fuseAt: now + G.fuseMs, rest: false, grounded: 0, bounces: 0,
+  };
 }
 
 /** Has the fuse burnt down? */

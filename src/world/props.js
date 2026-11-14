@@ -12,6 +12,7 @@ import { InstancePool, placement } from './pool.js';
 import { explode } from '../core/combat.js';
 import { MAP_HALF } from '../config.js';
 import { CRATE_HP, BARREL_HP, EXPLOSION, PICKUP, applyMedkit } from '../core/rules.js';
+import { onRoute, ROUTE_KEEP_CLEAR } from '../core/routes.js';
 
 const rnd = Math.random;
 
@@ -100,12 +101,13 @@ export class Props {
     for (const p of Object.values(this.pickupPools)) this.root.add(p.item.group, p.beam.group);
   }
 
-  /** Is there room for a prop of radius r at x,z? */
+  /** Is there room for a prop of radius r at x,z? Never on the riders' loops (wave 14). */
   canPlace(x, z, r) {
     const lim = MAP_HALF - 1.5;
     if (Math.abs(x) > lim || Math.abs(z) > lim) return false;
     const ps = this.world.playerStart;
     if (Math.hypot(x - ps.x, z - ps.z) < 4) return false;
+    if (onRoute(x, z, r + ROUTE_KEEP_CLEAR)) return false;
     for (const c of this.world.colliders) {
       if (c.maxY < 0.1) continue;
       const cx = clamp(x, c.minX, c.maxX), cz = clamp(z, c.minZ, c.maxZ);

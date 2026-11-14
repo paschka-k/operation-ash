@@ -253,8 +253,8 @@ export function damageAtRange(spec, dist) {
   return spec.damage * lerp(1, f.min ?? 0, clamp((dist - f.full) / (f.zero - f.full), 0, 1));
 }
 
-/** Damage multiplier per hit zone. */
-export const ZONE_MULT = { head: 2.5, body: 1, legs: 0.75 };
+/** Damage multiplier per hit zone. A vehicle (wave 14) is one zone of its own. */
+export const ZONE_MULT = { head: 2.5, body: 1, legs: 0.75, vehicle: 1 };
 
 export function zoneMultiplier(spec, zone) {
   return zone === 'head' ? spec.headMult : zone === 'legs' ? spec.legMult : 1;
@@ -309,6 +309,42 @@ export const ENEMY_TYPES = {
     key: 'e_heavy', hp: 240, speed: 2.5, patrol: 1.4, scale: 1.12, dmg: [9, 12], interval: 0.1, burst: [6, 11], pause: [0.9, 1.8],
     acc: 0.5, range: [14, 30], sight: 66, react: [0.45, 0.75], weapon: 'rifle', score: 250, armor: 0.78, cover: true, magSize: 60,
     uniform: 0x4a4038, vest: 0x1c1d1f, helmet: 0x26282b, skin: 0x9c7a60,
+  },
+  // ---- wave 14: riders and bosses. Fields beyond the ones above:
+  //   vehicle       what the bot rides in on (a key of VEHICLES); shot off it, it fights on foot as this type
+  //   mountedAcc    multiplies acc while it shoots from the moving vehicle
+  //   boss          a boss: announced, its health bar on top of the screen
+  //   grenadeEvery  seconds between grenades (core/boss.js)
+  // The skater's 'smg' is held like the pistol.
+  scooterRider: {
+    key: 'e_scooterRider', hp: 75, speed: 4.4, patrol: 2.1, scale: 0.97, dmg: [8, 11], interval: 0.3, burst: [1, 3], pause: [0.4, 1.0],
+    acc: 0.52, range: [5, 15], sight: 56, react: [0.3, 0.5], weapon: 'pistol', score: 150, armor: 1, cover: false, magSize: 14,
+    uniform: 0x3a4a5c, vest: 0x1d2229, helmet: 0x22262c, skin: 0xb08868,
+    vehicle: 'scooter', mountedAcc: 0.55,
+  },
+  skater: {
+    key: 'e_skater', hp: 80, speed: 4.6, patrol: 2.2, scale: 0.96, dmg: [8, 10], interval: 0.085, burst: [3, 7], pause: [0.5, 1.2],
+    acc: 0.48, range: [6, 18], sight: 56, react: [0.3, 0.5], weapon: 'smg', score: 175, armor: 1, cover: false, magSize: 30,
+    uniform: 0x5c4a3a, vest: 0x2a2622, helmet: 0x2f2a26, skin: 0xa4805f,
+    vehicle: 'skate', mountedAcc: 0.5,
+  },
+  biker: {
+    key: 'e_biker', hp: 110, speed: 3.8, patrol: 1.8, scale: 1.0, dmg: [9, 12], interval: 0.11, burst: [3, 6], pause: [0.6, 1.4],
+    acc: 0.55, range: [10, 26], sight: 62, react: [0.35, 0.6], weapon: 'rifle', score: 225, armor: 0.9, cover: true, magSize: 30,
+    uniform: 0x2b2b2b, vest: 0x141414, helmet: 0x3a1f1a, skin: 0xb3906f,
+    vehicle: 'moto', mountedAcc: 0.45,
+  },
+  bossBiker: {
+    key: 'e_bossBiker', hp: 500, speed: 3.4, patrol: 1.8, scale: 1.2, dmg: [10, 12], interval: 0.1, burst: [5, 9], pause: [0.6, 1.3],
+    acc: 0.58, range: [10, 26], sight: 70, react: [0.25, 0.45], weapon: 'rifle', score: 1500, armor: 0.65, cover: true, magSize: 40,
+    uniform: 0x1f1f22, vest: 0x0d0d0f, helmet: 0x6a1a14, skin: 0xa07a5c,
+    vehicle: 'heavyMoto', mountedAcc: 0.5, boss: true,
+  },
+  bossCommander: {
+    key: 'e_bossCommander', hp: 800, speed: 2.2, patrol: 1.3, scale: 1.28, dmg: [10, 12], interval: 0.09, burst: [12, 20], pause: [1.0, 1.8],
+    acc: 0.52, range: [12, 30], sight: 72, react: [0.35, 0.6], weapon: 'rifle', score: 2000, armor: 0.6, cover: true, magSize: 120,
+    uniform: 0x3f4636, vest: 0x22251d, helmet: 0x2a2d24, skin: 0x9c7a60,
+    boss: true, grenadeEvery: 7,
   },
 };
 
@@ -462,6 +498,126 @@ export const ARMOR = {
 export function absorbDamage(armor, amount) {
   const absorbed = Math.min(Math.max(0, armor), Math.max(0, amount) * ARMOR.absorb);
   return { armor: Math.max(0, armor - absorbed), health: Math.max(0, amount - absorbed), absorbed };
+}
+
+// ---- wave 14: vehicles and bosses
+/**
+ * What the riders ride. Speeds are m/s, accel and brake m/s², sizes metres (length along the heading,
+ * width across it, height of the vehicle itself). armor multiplies the damage the vehicle takes, hp is
+ * its own health (the rider keeps his). stance is the rider's pose: 'stand' on a scooter's deck, 'skate'
+ * sideways on a board, 'seat' on a motorbike.
+ *
+ * seatY: how high the rider's body frame sits above the ground under the vehicle, so the game layer puts
+ * the rider at core.y = ride.y + seatY. The body frame is the point under a standing soldier's feet, the
+ * one the hit zones (core/combat) and the eye height (core/ai) are measured from. On a deck it is the
+ * deck. On a seat the pose keeps the hip bone at its standing height (0.93 × the rider's scale above the
+ * frame), so the pelvis rests on the seat and the head and chest stay inside their hit zones: seatY is the
+ * seat height minus 0.93 × scale, below zero for a motorbike. The heavy motorbike carries the boss
+ * (scale of bossBiker).
+ *
+ * ramSpeed: from this speed a touch knocks the player down (Infinity: never), ramDamage once per
+ * ramCooldown seconds. wreckSecs: a wreck lies in the street this long (or until the wave is cleared).
+ * score: points and money for shooting the vehicle out from under its rider.
+ */
+export const VEHICLES = {
+  scooter: {
+    hp: 50, armor: 1, speed: 7, accel: 3, brake: 6, length: 1.15, width: 0.5, height: 1.15, seatY: 0.16, stance: 'stand',
+    ramSpeed: Infinity, ramDamage: 0, ramCooldown: 3, wreckSecs: 20, score: 75,
+  },
+  skate: {
+    hp: 35, armor: 1, speed: 5, accel: 2.2, brake: 4, length: 0.82, width: 0.24, height: 0.12, seatY: 0.11, stance: 'skate',
+    ramSpeed: Infinity, ramDamage: 0, ramCooldown: 3, wreckSecs: 20, score: 50,
+  },
+  moto: {
+    hp: 140, armor: 0.8, speed: 11, accel: 5, brake: 8, length: 2.05, width: 0.8, height: 1.15, seatY: -0.1, stance: 'seat',
+    ramSpeed: 5, ramDamage: 35, ramCooldown: 3, wreckSecs: 20, score: 125,
+  },
+  heavyMoto: {
+    hp: 320, armor: 0.6, speed: 9.5, accel: 4, brake: 7, length: 2.4, width: 0.95, height: 1.3, seatY: -0.25, stance: 'seat',
+    ramSpeed: 4, ramDamage: 50, ramCooldown: 3.5, wreckSecs: 20, score: 300,
+  },
+};
+
+/**
+ * How a vehicle drives its loop (core/ride.js).
+ *   grip          m/s² of sideways pull a vehicle holds in a turn: the speed in a turn of radius r is sqrt(grip × r)
+ *   substep       metres: a move is cut into steps no longer than this
+ *   gap           metres kept between a vehicle's nose and a blocker it stops for
+ *   lane          metres added to half the vehicle's width and the blocker's radius: closer to the loop, it is in the way
+ *   stuckSpeed    m/s: held by a blocker and slower than this, the vehicle counts as blocked
+ *   dismountSecs  blocked this long, the rider gets off and fights on foot
+ *   touch         metres of slack in the ram test
+ *   knockShare    the player is thrown at this share of the vehicle's speed, at most knockMax m/s
+ *   crashFriction m/s² a wreck slows down with while it slides along its lane
+ *   crashDrift    metres a wreck slides sideways out of the middle of its lane, at most
+ *   fallSecs      a wreck lies on its side after this long
+ *   aimCone       radians either side of the heading a rider can shoot to
+ *   maxLean       radians a vehicle leans into a turn, at most
+ */
+export const RIDE = {
+  grip: 5, substep: 0.25, gap: 0.1, lane: 0.15, stuckSpeed: 0.5, dismountSecs: 3, touch: 0.15,
+  knockShare: 0.7, knockMax: 9, crashFriction: 6, crashDrift: 0.4, fallSecs: 0.6, aimCone: 1.9, maxLean: 0.55,
+};
+
+/**
+ * The commander's habits (core/boss.js). He throws a grenade at the player he sees between grenadeMin
+ * and grenadeMax metres away, at most once per T.grenadeEvery seconds. A boss that has stayed within
+ * standRadius metres of one spot for standSecs goes after the player, and for pushSecs he fights in the
+ * open instead of waiting in cover. His grenade is lobbed at the spot (core/grenade launchGrenadeAt):
+ * its flight to the first touch of the ground takes base + perMetre × distance seconds, within min..max.
+ */
+export const BOSS = {
+  grenadeMin: 6, grenadeMax: 18, standSecs: 4, standRadius: 0.6, pushSecs: 3,
+  throwTime: { base: 0.5, perMetre: 1 / 15, min: 0.8, max: 1.7 },
+};
+
+/** The first wave of each kind of rider. The endless mode has all of them. */
+export const firstRiderWave = { scooterRider: 3, skater: 5, biker: 7 };
+
+/**
+ * How many riders a wave brings: a share of its bots, at least one once riders exist, at most max.
+ * The gang leader (bossBiker) brings `guards` bikers on top. Riders and the boss are part of
+ * waveCount(n): they take the places of grunts and of a heavy.
+ */
+export const RIDER_RULES = { share: 0.2, max: 6, guards: 2 };
+
+/** The boss of wave n, or null: every fifth wave, the gang leader and the commander in turn. */
+export function bossForWave(n) {
+  if (!(n > 0) || n % 5 !== 0) return null;
+  return (n / 5) % 2 === 1 ? 'bossBiker' : 'bossCommander';
+}
+
+/** Riders on vehicles at the same time: 3, 4 in the endless mode (waves past MAX_WAVES). */
+export function maxRiders(n, endless = false) { return endless || n > MAX_WAVES ? 4 : 3; }
+
+/**
+ * The full roster of wave n: {type: count} over grunt, rusher, heavy, the riders and the boss. It sums
+ * to waveCount(n): the riders are cut out of the grunts, the boss out of the heavies, and the rushers of
+ * waveComposition(n) stay as they are. The newest kind of rider comes first, so a kind is there in the
+ * wave it unlocks.
+ */
+export function waveRoster(n, endless = false) {
+  const base = waveComposition(n);
+  const roster = { grunt: base.grunt, rusher: base.rusher, heavy: base.heavy };
+  const boss = bossForWave(n);
+  if (boss) {
+    roster[boss] = 1;
+    if (roster.heavy > 0) roster.heavy--; else roster.grunt--;
+  }
+  const kinds = Object.keys(firstRiderWave)
+    .filter((k) => endless || n >= firstRiderWave[k])
+    .sort((a, b) => firstRiderWave[b] - firstRiderWave[a]);
+  const guards = boss === 'bossBiker' ? Math.min(RIDER_RULES.guards, Math.max(0, roster.grunt - 1)) : 0;
+  let riders = kinds.length ? clamp(Math.round(waveCount(n) * RIDER_RULES.share), 1, RIDER_RULES.max) : 0;
+  if (endless) riders = Math.max(riders, kinds.length);
+  riders = Math.max(0, Math.min(riders, roster.grunt - guards - 1));   // a few grunts always stay
+  for (let i = 0; i < riders; i++) {
+    const k = kinds[i % kinds.length];
+    roster[k] = (roster[k] || 0) + 1;
+  }
+  if (guards) roster.biker = (roster.biker || 0) + guards;
+  roster.grunt -= riders + guards;
+  return roster;
 }
 
 

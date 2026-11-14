@@ -307,7 +307,13 @@ export class HUD {
   // names of the hud contract
   hideScreen() { this.hideScreens(); }
   currentScreen() { return this.screen || null; }
-  setFps(n) { this.set('h-fps', n ? Math.round(n) + ' ' + t('fpsLabel') : ''); }
+  setFps(n) { this.set('h-fps', n ? this.fpsLine(n) : ''); }
+
+  /** The F3 line: frames per second and the graphics card they come from (G01). */
+  fpsLine(n) {
+    const gpu = this.game.gr && this.game.gr.gpu;
+    return Math.round(n) + ' ' + t('fpsLabel') + ' · ' + ((gpu && gpu.name) || t('gpuUnknown'));
+  }
 
   showHud(on) { this.hud.classList.toggle('hidden', !on); }
 
@@ -403,7 +409,7 @@ export class HUD {
     if (g.settings.showFps) {
       this.fpsFrames++; this.fpsTime += realDt;
       if (this.fpsTime > 0.5) {
-        this.set('h-fps', Math.round(this.fpsFrames / this.fpsTime) + ' ' + t('fpsLabel'));
+        this.set('h-fps', this.fpsLine(this.fpsFrames / this.fpsTime));
         this.fpsFrames = 0; this.fpsTime = 0;
       }
     } else this.set('h-fps', '');

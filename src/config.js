@@ -142,6 +142,11 @@ const STR = {
     e_grunt: 'Рядовой',
     e_rusher: 'Штурмовик',
     e_heavy: 'Тяжёлый',
+    e_scooterRider: 'Самокатчик',
+    e_skater: 'Скейтер',
+    e_biker: 'Мотоциклист',
+    e_bossBiker: 'Главарь',
+    e_bossCommander: 'Командир',
     barrel: 'Бочка',
     ctl_move: 'Движение', ctl_look: 'Обзор', ctl_jump: 'Прыжок', ctl_sprint: 'Бег',
     ctl_crouch: 'Присесть', ctl_fire: 'Огонь', ctl_aim: 'Прицелиться', ctl_reload: 'Перезарядка',
@@ -232,6 +237,18 @@ const STR = {
     killFire: 'Пламя',
     ctl_grenade: 'Граната', ctl_inventory: 'Инвентарь',
 
+    // ---- wave 14: the graphics card (the settings line, the F3 line, the hint in the main menu)
+    gpuLabel: 'Видеокарта',
+    gpuUnknown: 'неизвестно',
+    gpuHintTitle: 'Игра идёт на встроенной видеокарте',
+    gpuSoftTitle: 'Браузер рисует без видеокарты',
+    gpuNow: 'Сейчас:',
+    gpuSoftText: 'Включите аппаратное ускорение в настройках браузера (Chrome и Edge: «Настройки → Система → Использовать графическое ускорение»).',
+    gpuHintWindows: 'Windows: «Параметры → Система → Дисплей → Графика», выберите в списке свой браузер и задайте ему «Высокая производительность».',
+    gpuHintNvidia: 'Или в панели управления NVIDIA: «Управление параметрами 3D → Программные настройки», выберите браузер и «Высокопроизводительный процессор NVIDIA».',
+    gpuHintRestart: 'Затем полностью закройте и снова откройте браузер.',
+    gpuHintClose: 'Понятно',
+
   },
   en: {
     title: 'OPERATION ASH',
@@ -293,6 +310,11 @@ const STR = {
     e_grunt: 'Grunt',
     e_rusher: 'Rusher',
     e_heavy: 'Heavy',
+    e_scooterRider: 'Scooter rider',
+    e_skater: 'Skater',
+    e_biker: 'Biker',
+    e_bossBiker: 'Gang leader',
+    e_bossCommander: 'Commander',
     barrel: 'Barrel',
     ctl_move: 'Move', ctl_look: 'Look', ctl_jump: 'Jump', ctl_sprint: 'Sprint',
     ctl_crouch: 'Crouch', ctl_fire: 'Fire', ctl_aim: 'Aim down sights', ctl_reload: 'Reload',
@@ -382,6 +404,18 @@ const STR = {
     statFuel: 'fuel',
     killFire: 'Flames',
     ctl_grenade: 'Grenade', ctl_inventory: 'Inventory',
+
+    // ---- wave 14: the graphics card (the settings line, the F3 line, the hint in the main menu)
+    gpuLabel: 'Graphics card',
+    gpuUnknown: 'unknown',
+    gpuHintTitle: 'The game runs on the integrated graphics',
+    gpuSoftTitle: 'The browser draws without a graphics card',
+    gpuNow: 'Now:',
+    gpuSoftText: 'Turn on hardware acceleration in the browser settings (Chrome and Edge: "Settings → System → Use graphics acceleration").',
+    gpuHintWindows: 'Windows: "Settings → System → Display → Graphics", pick your browser in the list and set it to "High performance".',
+    gpuHintNvidia: 'Or in the NVIDIA Control Panel: "Manage 3D settings → Program Settings", pick the browser and "High-performance NVIDIA processor".',
+    gpuHintRestart: 'Then close the browser completely and open it again.',
+    gpuHintClose: 'Got it',
 
   },
 };

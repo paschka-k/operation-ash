@@ -18,7 +18,7 @@
 
 import { createRng } from './math.js';
 import {
-  PLAYER, MAX_WAVES, INTERMISSION_SECONDS, waveTier, waveCount, maxAlive, waveComposition, killScore, regenHealth,
+  PLAYER, MAX_WAVES, INTERMISSION_SECONDS, waveTier, waveCount, maxAlive, killScore, regenHealth, waveRoster,
 } from './rules.js';
 import { ECONOMY, stageBreakdown, waveHpMult, absorbDamage } from './rules.js';
 
@@ -158,7 +158,8 @@ function startWave(g, n, events) {
   g.wave = n;
   g.tier = waveTier(n);
   const q = [];
-  for (const [type, count] of Object.entries(waveComposition(n))) for (let i = 0; i < count; i++) q.push(type);
+  // the full roster: foot soldiers, riders (wave 14) and the boss, together exactly waveCount(n) bots
+  for (const [type, count] of Object.entries(waveRoster(n, g.endless))) for (let i = 0; i < count; i++) q.push(type);
   for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(g.rng() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
   g.queue = q;
   g.waveTotal = q.length;
