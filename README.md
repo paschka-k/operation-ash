@@ -54,9 +54,11 @@ The weapons in hand are cut from side-view outlines and turned profiles instead 
 
 Photoscans (see below) replace eight surfaces and five props when their files are present. That moves walls, roads and crates much closer to a photograph, but the buildings and the soldiers are still modelled from simple shapes.
 
-## Optional photoscans (CC0, Poly Haven)
+## Photoscans (CC0, Poly Haven)
 
-The game runs without them. With them, eight surfaces use scanned PBR textures and five props use scanned models. Nothing is downloaded unless you run the scripts yourself. Both have a dry mode that only reads the catalog.
+Eight surfaces use scanned PBR textures and five props use scanned models. The files are in `assets/` (about 25 MB, CC0 from [Poly Haven](https://polyhaven.com)), and the online version loads them on the first visit, with a progress bar. The game also runs without them: delete `assets/`, or turn them off in the settings, and everything is generated in code.
+
+The scripts below fetch the same files again from Poly Haven. Nothing is downloaded unless you run them yourself. Both have a dry mode that only reads the catalog.
 
 ```bash
 npm run textures -- --dry   # 8 PBR sets, about 13.9 MB at 1k, jpg

@@ -1,0 +1,33 @@
+{
+  "files": [
+    "asphalt_arm.jpg",
+    "asphalt_diff.jpg",
+    "asphalt_nor.jpg",
+    "brick_arm.jpg",
+    "brick_diff.jpg",
+    "brick_nor.jpg",
+    "concrete_arm.jpg",
+    "concrete_diff.jpg",
+    "concrete_nor.jpg",
+    "container_arm.jpg",
+    "container_diff.jpg",
+    "container_nor.jpg",
+    "dirt_arm.jpg",
+    "dirt_diff.jpg",
+    "dirt_nor.jpg",
+    "metal_arm.jpg",
+    "metal_diff.jpg",
+    "metal_nor.jpg",
+    "plaster_arm.jpg",
+    "plaster_diff.jpg",
+    "plaster_nor.jpg",
+    "wood_arm.jpg",
+    "wood_diff.jpg",
+    "wood_nor.jpg",
+    "barrel.glb",
+    "cardboard_box.glb",
+    "concrete_barrier.glb",
+    "covered_car.glb",
+    "crate.glb"
+  ]
+}

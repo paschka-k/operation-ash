@@ -1,8 +1,7 @@
 node_modules/
 
-# Optional photoscans fetched by `npm run textures` and `npm run models` (CC0, Poly Haven).
-# They are large and reproducible, so they are not stored in the repository.
-assets/
+# assets/ (photoscans from Poly Haven, CC0, about 25 MB) is stored in the repository since
+# 2026-11-14 so that the site can serve it. `npm run textures` and `npm run models` fetch it again.
 
 # The ready to play build is kept: dist/game.html (no photoscans, about 1 MB).
 # The builds that carry the photoscans are large and reproducible.
