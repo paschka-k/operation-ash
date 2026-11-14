@@ -284,6 +284,8 @@ export class HUD {
   }
 
   showScreen(name) {
+    // leaving the key screen in any way (back, resume, pause, menu, a new game) ends a key wait
+    if (name !== 'keys' && this.game.keys) this.game.keys.cancel();
     for (const s of this.screens) {
       const n = document.getElementById('screen-' + s);
       if (n) n.classList.toggle('hidden', s !== name);

@@ -241,9 +241,12 @@ class Game {
     this.audio.lowHealth = 0;
   }
 
-  /** Losing a lock the game had pauses it; a lock that was refused or never asked for does not. */
+  /**
+   * Losing the lock pauses the game, and so does a refused lock in mouse play (the pause menu offers
+   * the click that can lock). Gamepad play never asks for the lock, so nothing it does pauses here.
+   */
   onPointerLockChange(locked, wasLocked = true) {
-    if (!locked && wasLocked && this.state === 'playing' && !this.testMode) this.pause();
+    if (!locked && (wasLocked || this.lastDevice !== 'pad') && this.state === 'playing' && !this.testMode) this.pause();
   }
 
   onPlayerDeath() {

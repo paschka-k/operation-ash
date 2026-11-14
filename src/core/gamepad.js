@@ -29,6 +29,9 @@ export const PAD_PLAY = {
   [BTN.VIEW]: 'inventory', [BTN.START]: 'pause', [BTN.L3]: 'sprint', [BTN.UP]: 'map',
 };
 
+/** Values of PAD_PLAY that are commands of the pad rather than input actions. */
+export const PAD_COMMANDS = ['nextWeapon', 'pause'];
+
 /** Buttons that do an action, for prompts. Sticks are not buttons: see STICK_ACTIONS. */
 export function padButtonsFor(action) {
   const out = [];
@@ -104,6 +107,21 @@ export function readPad(pad, prevHeld = []) {
   const m = radialDeadzone(+ax[0] || 0, +ax[1] || 0, GAMEPAD.moveDeadzone, GAMEPAD.outerDeadzone, GAMEPAD.moveCurve);
   const l = radialDeadzone(+ax[2] || 0, +ax[3] || 0, GAMEPAD.lookDeadzone, GAMEPAD.outerDeadzone, GAMEPAD.lookCurve);
   return { held, move: { x: m.x, y: m.y === 0 ? 0 : -m.y }, look: { x: l.x, y: l.y } };
+}
+
+/**
+ * Is the player using the pad? A new button press or a clear stick deflection says so; a stick
+ * that only just leaves the dead zone (drift, a resting thumb) does not.
+ */
+export function padActive(read, edges) {
+  if (edges && edges.length) return true;
+  const k = GAMEPAD.activeDeflection;
+  return Math.hypot(read.move.x, read.move.y) >= k || Math.hypot(read.look.x, read.look.y) >= k;
+}
+
+/** Is the stick back at rest for menu navigation (below the release threshold)? */
+export function stickNeutral(stick) {
+  return !stick || Math.hypot(stick.x, stick.y) < GAMEPAD.navOff;
 }
 
 /** Indices of buttons held now and not before. */

@@ -58,7 +58,7 @@ export class Input {
       if (!this.locked) this.releaseAll();
       this.game.onPointerLockChange(this.locked, was);
     });
-    // a refused lock was never held: the game goes on without it (gamepad play, no user gesture)
+    // a refused lock was never held; main.js decides (mouse play pauses, gamepad play never asks)
     this._on(document, 'pointerlockerror', () => this.game.onPointerLockChange(false, false));
   }
 

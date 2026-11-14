@@ -60,6 +60,7 @@ export const GAMEPAD = {
   sprintKeep: 0.35,                       // the L3 sprint holds while the stick pushes forward this much
   navOn: 0.5, navOff: 0.3,                // menu navigation with the left stick
   navDelay: 0.38, navRepeat: 0.12,        // a held direction repeats after navDelay, then every navRepeat
+  activeDeflection: 0.5,                  // a stick counts as "the player uses the pad" from here (after the dead zone)
 };
 
 /** Health after regeneration. */

@@ -175,6 +175,7 @@ const STR = {
     k_wheel: 'колесо',
     ctl_map: 'Карта',
     pad_lstick: 'левый стик', pad_rstick: 'правый стик',
+    padUnsupported: 'Геймпад не поддерживается в этом браузере',
     mapTitle: 'КАРТА КВАРТАЛА', mapClose: 'закрыть', mapNorth: 'С', mapYou: 'Вы',
 
     // ---- wave 12: economy
@@ -275,6 +276,7 @@ const STR = {
     k_wheel: 'wheel',
     ctl_map: 'Map',
     pad_lstick: 'left stick', pad_rstick: 'right stick',
+    padUnsupported: 'This controller is not supported in this browser',
     mapTitle: 'BLOCK MAP', mapClose: 'close', mapNorth: 'N', mapYou: 'You',
 
     // ---- wave 12: economy

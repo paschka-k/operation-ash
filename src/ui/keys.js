@@ -5,12 +5,16 @@
 // Delete clears the slot; a code that another action used moves to this one. The result is saved
 // in settings.bindings and handed to input.setBindings().
 //
-// While a slot waits, its key events are taken in the capture phase on window and stopped there,
-// so nothing else (the game's global keys, the input layer, a focused button) sees them.
+// While a slot waits, key presses are taken in the capture phase on window and stopped there, so
+// nothing else (the game's global keys, the input layer, a focused button) sees them. Releases go
+// through, except those of the presses that were taken, so a key held before the wait is let go
+// normally. A wait lives only on this screen: leaving it any way (back, resume, pause, menu) ends it
+// (hud.showScreen calls cancel()).
 
 import { ACTIONS, mergeBindings, t } from '../config.js';
 import { WEAPON_ORDER, WEAPON_SPECS } from '../core/rules.js';
 import { BTN, buttonLabel, padButtonsFor, STICK_ACTIONS } from '../core/gamepad.js';
+import { assignBinding } from '../core/bindings.js';
 
 // names that read the same in every language
 const NAMES = {
@@ -69,7 +73,7 @@ export class KeyScreen {
   constructor(game) {
     this.game = game;
     this.capture = null;        // {action, slot} while a slot waits for a key
-    this.eatKeyUp = null;       // the key that was just bound: its keyup goes nowhere either
+    this.eaten = new Set();     // keys and mouse buttons whose press the wait took: their release goes nowhere either
     this.eatClicks = false;     // a mouse button was just bound: its click goes nowhere either
     const rows = ACTIONS.map((a) => `
       <div class="kb-row" data-act="${a}">
@@ -96,7 +100,13 @@ export class KeyScreen {
     this.refresh();
   }
 
-  get capturing() { return !!this.capture; }
+  /** Is a slot waiting? Only on this screen; a wait left behind elsewhere is ended. */
+  get capturing() { return this.live(); }
+
+  live() {
+    if (this.capture && this.game.hud.screen !== 'keys') this.cancel();
+    return !!this.capture;
+  }
 
   /** Show the screen (from the settings screen). */
   open() {
@@ -125,19 +135,15 @@ export class KeyScreen {
     this.refresh();
   }
 
-  /** Put a code in the waiting slot (null clears it). A code another action had moves here. */
+  /**
+   * Put a code in the waiting slot (null clears it). The other slot stays as it is, a code another
+   * action had moves here (core/bindings.js assignBinding).
+   */
   assign(code) {
     if (!this.capture) return;
     const { action, slot } = this.capture;
     this.capture = null;
-    const b = mergeBindings(this.game.settings.bindings); // a copy
-    if (code) {
-      for (const a of ACTIONS) b[a] = b[a].filter((c) => c !== code);
-      const list = b[action];
-      if (slot < list.length) list[slot] = code; else list.push(code);
-      b[action] = list.slice(0, 2);
-    } else if (slot < b[action].length) b[action].splice(slot, 1);
-    this.save(b);
+    this.save(assignBinding(mergeBindings(this.game.settings.bindings), action, slot, code));
   }
 
   reset() {
@@ -176,37 +182,38 @@ export class KeyScreen {
 
   listen() {
     const stop = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+    // a press outside a wait means the key was let go meanwhile: its next release is not ours
+    window.addEventListener('blur', () => this.eaten.clear());
     window.addEventListener('keydown', (e) => {
-      if (!this.capture) return;
+      if (!this.live()) { this.eaten.delete(e.code); return; }
       stop(e);
+      this.eaten.add(e.code);
       if (e.repeat) return;
       if (e.code === 'Escape') this.cancel();
       else if (e.code === 'Backspace' || e.code === 'Delete') this.assign(null);
       else if (!e.code || RESERVED.has(e.code)) return; // keep waiting
       else this.assign(e.code);
-      this.eatKeyUp = e.code;
     }, true);
     window.addEventListener('keyup', (e) => {
-      if (this.capture || (this.eatKeyUp && e.code === this.eatKeyUp)) {
-        stop(e);
-        if (e.code === this.eatKeyUp) this.eatKeyUp = null;
-      }
+      // only the releases of presses the wait took; any other key (held before) is let go as usual
+      if (this.eaten.delete(e.code)) stop(e);
     }, true);
     window.addEventListener('mousedown', (e) => {
-      if (!this.capture) return;
+      if (!this.live()) { this.eaten.delete('Mouse' + e.button); return; }
       stop(e);
+      this.eaten.add('Mouse' + e.button);
       if (e.button > 2) return; // back and forward buttons would also navigate the page
       this.eatClicks = true;
       this.assign('Mouse' + e.button);
     }, true);
     window.addEventListener('mouseup', (e) => {
-      if (!this.capture && !this.eatClicks) return;
+      if (!this.eaten.delete('Mouse' + e.button)) return;
       stop(e);
       // the click (or the context menu) of the bound button follows its mouseup
       if (this.eatClicks) setTimeout(() => { this.eatClicks = false; }, 60);
     }, true);
     for (const type of ['click', 'auxclick', 'contextmenu']) {
-      window.addEventListener(type, (e) => { if (this.capture || this.eatClicks) stop(e); }, true);
+      window.addEventListener(type, (e) => { if (this.eatClicks || (this.capture && this.live())) stop(e); }, true);
     }
   }
 }

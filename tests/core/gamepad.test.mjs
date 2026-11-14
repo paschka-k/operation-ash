@@ -1,11 +1,14 @@
 // Gamepad (R45): dead zones, triggers, the button table, layouts and labels, menu navigation.
 import { test, assert, near } from '../harness.mjs';
 import {
-  BTN, BUTTON_COUNT, PAD_PLAY, padButtonsFor, buttonLabel, detectLayout, resolveLayout, radialDeadzone, triggerHeld,
-  readPad, padEdges, stepSprintLatch, navDirection, stepNavRepeat, LAYOUTS,
+  BTN, BUTTON_COUNT, PAD_PLAY, PAD_COMMANDS, padButtonsFor, buttonLabel, detectLayout, resolveLayout, radialDeadzone, triggerHeld,
+  readPad, padEdges, padActive, stickNeutral, stepSprintLatch, navDirection, stepNavRepeat, LAYOUTS,
 } from '../../src/core/gamepad.js';
 import { GAMEPAD } from '../../src/core/rules.js';
-import { ACTIONS } from '../../src/config.js';
+
+// the input actions the pad holds in play (all of them are in config.js ACTIONS; the browser side
+// filters by that list, this test stays inside src/core)
+const HELD = ['jump', 'crouch', 'reload', 'lastWeapon', 'grenade', 'aim', 'fire', 'inventory', 'sprint', 'map'];
 
 function pad({ axes = [0, 0, 0, 0], down = [], values = {} } = {}) {
   const buttons = [];
@@ -81,7 +84,8 @@ test('the button table: conventional shooter layout, every action exists', () =>
   assert.equal(PAD_PLAY[BTN.VIEW], 'inventory');
   assert.equal(PAD_PLAY[BTN.UP], 'map');
   assert.equal(PAD_PLAY[BTN.START], 'pause');
-  for (const a of Object.values(PAD_PLAY)) assert.ok(ACTIONS.includes(a) || a === 'nextWeapon' || a === 'pause', a);
+  for (const a of Object.values(PAD_PLAY)) assert.ok(HELD.includes(a) || PAD_COMMANDS.includes(a), a);
+  assert.deepEqual([...PAD_COMMANDS].sort(), ['nextWeapon', 'pause']);
   assert.deepEqual(padButtonsFor('fire'), [BTN.RT]);
   assert.deepEqual(padButtonsFor('slot4'), []);
 });
@@ -136,6 +140,27 @@ test('menu direction: D-pad wins, the stick has hysteresis', () => {
   assert.equal(navDirection(none, { x: 0, y: 0.4 }), null, 'below the threshold');
   assert.equal(navDirection(none, { x: 0, y: 0.4 }, 'up'), 'up', 'held above the release threshold');
   assert.equal(navDirection(none, { x: 0, y: 0.2 }, 'up'), null);
+});
+
+test('the pad counts as in use only on a press or a clear deflection', () => {
+  const rest = readPad(pad());
+  assert.equal(padActive(rest, []), false);
+  assert.equal(padActive(rest, [BTN.A]), true, 'a press');
+  const drift = readPad(pad({ axes: [0.3, 0, 0.3, 0] }));
+  assert.ok(drift.move.x > 0 && drift.look.x > 0, 'past the dead zone, so it still moves and looks');
+  assert.equal(padActive(drift, []), false, 'but it does not take over from the mouse');
+  assert.equal(padActive(readPad(pad({ axes: [0, -0.9, 0, 0] })), []), true);
+  assert.equal(padActive(readPad(pad({ axes: [0, 0, 0.9, 0] })), []), true);
+  // a non-standard pad read with standard indices would look like this: the view would turn on its own
+  const wrong = readPad({ axes: [0, 0, -1, 0, 0, -1], buttons: [] });
+  assert.equal(wrong.look.x, -1, 'why non-standard pads are ignored by the browser side');
+});
+
+test('stick at rest for menus', () => {
+  assert.equal(stickNeutral({ x: 0, y: 0 }), true);
+  assert.equal(stickNeutral({ x: 0, y: GAMEPAD.navOff - 0.01 }), true);
+  assert.equal(stickNeutral({ x: 0, y: 0.8 }), false);
+  assert.equal(stickNeutral(null), true);
 });
 
 test('menu repeat: at once, after the delay, then at the repeat rate', () => {

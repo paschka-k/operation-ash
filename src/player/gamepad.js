@@ -14,15 +14,16 @@
 // says which device acted last ('pad' or 'kbm'); main.js starts and resumes without pointer lock
 // when it is 'pad'.
 
-import { ACTIONS } from '../config.js';
+import { ACTIONS, t } from '../config.js';
 import { GAMEPAD } from '../core/rules.js';
 import {
-  BTN, PAD_PLAY, readPad, padEdges, stepSprintLatch, navDirection, stepNavRepeat, resolveLayout,
+  BTN, PAD_PLAY, readPad, padEdges, padActive, stickNeutral, stepSprintLatch, navDirection, stepNavRepeat, resolveLayout,
 } from '../core/gamepad.js';
 import { LOOK_RAD_PER_COUNT } from './controller.js';
 
 const FOCUSABLE = 'button, select, input, [data-pad-focus]';
 const HELD_ACTIONS = Object.entries(PAD_PLAY).filter(([, a]) => ACTIONS.includes(a) && a !== 'sprint').map(([i, a]) => [+i, a]);
+const REST = { x: 0, y: 0 };
 
 export class GamepadInput {
   constructor(game) {
@@ -35,6 +36,9 @@ export class GamepadInput {
     this.latch = false;        // the L3 sprint
     this.mode = 'none';        // 'play' | 'menu' | 'none'
     this.rep = { dir: null, t: 0 };
+    this.stickMuted = false;   // the stick was pushed at a mode switch: it does not navigate until it rests
+    this.unsupported = null;   // id of a pad without the standard mapping that was noticed
+    this.toastPending = false;
     this.focus = null;
     this.screenEl = null;
     this.lastFocus = new WeakMap(); // screen element -> the element focused there last
@@ -61,30 +65,37 @@ export class GamepadInput {
     if (g.hud && g.hud.refreshBindings) g.hud.refreshBindings();
   }
 
-  /** The pad to read: the first connected one in the standard mapping, else the first connected. */
+  /**
+   * The pad to read: the first connected one in the standard mapping. Others are ignored: their
+   * buttons and axes have other meanings (read with standard indices the view would turn on its own).
+   */
   read() {
     let list = null;
     try { list = navigator.getGamepads ? navigator.getGamepads() : null; } catch (e) { return null; }
     if (!list) return null;
-    let any = null;
+    let other = null;
     for (const p of list) {
       if (!p || p.connected === false) continue;
       if (p.mapping === 'standard') return p;
-      if (!any) any = p;
+      if (!other) other = p;
     }
-    return any;
+    if (other && other.id !== this.unsupported) { this.unsupported = other.id; this.toastPending = true; }
+    return null;
   }
 
   poll(dt) {
     const g = this.game;
     const raw = this.read();
+    // say once that a controller was seen but cannot be used (the toast shows in play)
+    if (this.toastPending && g.state === 'playing' && !g.hud.screen) { this.toastPending = false; g.hud.toast(t('padUnsupported')); }
     if (!raw) { if (this.connected) this.disconnect(); return; }
     if (!this.connected || raw.id !== this.id) this.connect(raw);
 
     const r = readPad(raw, this.held);
     const edges = padEdges(this.held, r.held);
     this.held = r.held;
-    if (edges.length || r.move.x || r.move.y || r.look.x || r.look.y) this.setDevice('pad');
+    // a press or a clear push takes over from the mouse; drift past the dead zone does not
+    if (padActive(r, edges)) this.setDevice('pad');
 
     const screen = this.visibleScreen();
     const mode = screen ? 'menu' : g.state === 'playing' ? 'play' : 'none';
@@ -134,7 +145,9 @@ export class GamepadInput {
     // what is held at the switch belongs to the old mode (A that clicked "Resume" must not jump)
     this.mute = new Set();
     r.held.forEach((h, i) => { if (h) this.mute.add(i); });
-    this.rep = { dir: navDirection([], r.move), t: 0 };
+    // the stick too: a direction held at the switch does nothing until the stick comes back to rest
+    this.rep = { dir: null, t: 0 };
+    this.stickMuted = !stickNeutral(r.move);
     if (mode !== 'menu') { this.setFocus(null); this.screenEl = null; }
     // a menu opened fresh (pause, death) starts on its main button; within the menus the focus is remembered
     else this.lastFocus = new WeakMap();
@@ -171,14 +184,19 @@ export class GamepadInput {
 
   menu(dt, r, fresh, screen) {
     const g = this.game;
-    if (screen !== this.screenEl) { this.screenEl = screen; this.focus = null; }
+    if (screen !== this.screenEl) { this.setFocus(null); this.screenEl = screen; }
     const had = this.validFocus(screen);
     if (!had && g.lastDevice === 'pad') this.setFocus(this.defaultFocus(screen));
     const held = r.held.map((h, i) => h && !this.mute.has(i));
-    const dir = navDirection(held, r.move, this.rep.dir);
+    if (this.stickMuted && stickNeutral(r.move)) this.stickMuted = false;
+    const dir = navDirection(held, this.stickMuted ? REST : r.move, this.rep.dir);
     const step = stepNavRepeat(this.rep, dir, dt);
     if (fresh.includes(BTN.B)) { this.back(); return; }
-    if (fresh.includes(BTN.START) && g.state === 'paused') { g.resume(); return; }
+    if (fresh.includes(BTN.START) && g.state === 'paused') {
+      if (g.keys) g.keys.cancel(); // a key wait never outlives the menus
+      g.resume();
+      return;
+    }
     if (!had) return; // the first move or A only shows where the focus is
     if (step) this.navigate(dir, screen);
     if (fresh.includes(BTN.A)) this.activate();
@@ -202,12 +220,8 @@ export class GamepadInput {
   }
 
   setFocus(el) {
-    const old = this.focus;
-    if (old) {
-      old.classList.remove('pad-focus');
-      const row = old.closest('.row');
-      if (row) row.classList.remove('pad-row');
-    }
+    // one highlight at most, on every screen (also one left over on a screen that was hidden)
+    for (const n of document.querySelectorAll('#ui .pad-focus, #ui .pad-row')) n.classList.remove('pad-focus', 'pad-row');
     this.focus = el;
     if (!el) return;
     el.classList.add('pad-focus');
