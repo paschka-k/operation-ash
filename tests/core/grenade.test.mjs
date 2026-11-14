@@ -28,7 +28,7 @@ test('a throw leaves along the view, arcing up, and keeps some of the thrower\'s
   const g = launchGrenade({ eye, dir: { x: 0, y: 0, z: -1 }, now: 1000 });
   assert.ok(g.vz < -13 && g.vy > 2, 'velocity ' + g.vx + ' ' + g.vy + ' ' + g.vz);
   near(grenadeSpeed(g), GRENADE.speed, 1e-9);
-  near(g.z, -0.3, 1e-9, 'starts in the hand, 30 cm forward');
+  near(g.z, -GRENADE.reach, 1e-9, 'starts in the hand, in front of the eye');
   assert.equal(g.fuseAt, 1000 + GRENADE.fuseMs);
   const run = launchGrenade({ eye, dir: { x: 0, y: 0, z: -1 }, vel: { x: 4, y: 0, z: 0 } });
   near(run.vx, 4 * GRENADE.inherit, 1e-9);
@@ -36,8 +36,15 @@ test('a throw leaves along the view, arcing up, and keeps some of the thrower\'s
 
 test('pressed against a wall, the grenade starts in front of it, not inside it', () => {
   const wall = makeBox(0, 2, -0.5, 4, 4, 0.2);          // face at z = -0.4
-  const g = launchGrenade({ eye: { x: 0, y: 1.62, z: -0.05 }, dir: { x: 0, y: 0, z: -1 }, colliders: [wall] });
-  assert.ok(g.z > -0.4 + GRENADE.radius - 1e-6, 'z = ' + g.z);
+  const eyeAtWall = { x: 0, y: 1.62, z: -0.25 };         // 15 cm from the face: closer than the hand reaches
+  assert.ok(0.15 < GRENADE.reach - GRENADE.radius, 'the setup only means something when the wall is within reach');
+  const open = launchGrenade({ eye: eyeAtWall, dir: { x: 0, y: 0, z: -1 }, colliders: [] });
+  assert.ok(open.z < -0.4, 'without the wall it would start beyond the face: ' + open.z);
+  const g = launchGrenade({ eye: eyeAtWall, dir: { x: 0, y: 0, z: -1 }, colliders: [wall] });
+  assert.ok(g.z > -0.4 + GRENADE.radius - 1e-6 && g.z <= eyeAtWall.z, 'z = ' + g.z);
+  // and it does not tunnel on its first step either
+  fly(g, [wall], 300);
+  assert.ok(g.z > -0.4, 'stayed on this side: ' + g.z);
 });
 
 test('it bounces off a wall, never passes it, rolls and comes to rest on the ground', () => {
@@ -109,7 +116,7 @@ test('sweepBall reports the face that is hit and ignores boxes far from the move
 
 test('the blast: bigger than a barrel, kills a tier 1 grunt lying at its feet, cover shields it', () => {
   assert.ok(GRENADE.blastRadius > EXPLOSION.radius && GRENADE.blastDamage > EXPLOSION.damage);
-  const center = { x: 0, y: GRENADE.radius + 0.3, z: 0 };   // the game blows it up 30 cm above where it lies
+  const center = { x: 0, y: GRENADE.radius, z: 0 };         // the blast is centred on the grenade lying on the ground
   const hp = enemyParams('grunt', 1).hp;
   const near1 = { x: 1, y: 0, z: 0, alive: true };
   const far = { x: 5, y: 0, z: 0, alive: true };

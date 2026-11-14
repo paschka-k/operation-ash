@@ -86,7 +86,8 @@ export const WEAPON_SPECS = {
   //   scope           aiming looks through a telescopic sight: the HUD draws it and the model is hidden
   //   boltAction      the bolt is worked by hand after every shot (animation only)
   //   flame, range    a stream of fire instead of bullets: rays stop at `range` metres, no tracers,
-  //                   holes or casings; the magazine holds fuel units. burn {dps, ms} sets bots alight.
+  //                   holes or casings; the magazine holds fuel units. burn {dps, ms, min} sets bots alight
+  //                   for ms, burning dps, when a hit does at least min damage.
   smg: {
     id: 'smg', nameKey: 'w_smg', price: 2000, damage: 17, pellets: 1, rpm: 1000, auto: true, mag: 32, reserve: 192,
     reloadMs: 1900, perShell: false, spreadBase: 0.9, spreadMax: 4.2, spreadPerShot: 0.2,
@@ -129,7 +130,7 @@ export const WEAPON_SPECS = {
     recoil: { x: 0.12, y: 0.15 }, adsSpreadMul: 0.85, switchMs: 500,
     falloff: { full: 3, zero: 10, min: 0 }, headMult: 2.5, legMult: 0.75,
     zoom: 0.95, adsMs: 250, noise: 30, tracerEvery: 0, sound: 'flamer', moveMul: 0.9,
-    flame: true, range: 10, burn: { dps: 14, ms: 2000 },
+    flame: true, range: 10, burn: { dps: 14, ms: 2000, min: 1 },
   },
 };
 
@@ -151,15 +152,24 @@ export const GRENADE = {
   rest: 0.15,          // slower than this on the ground and it lies still
   throwMs: 650,        // a throw takes this long: the weapon is lowered and cannot fire
   releaseMs: 230,      // the grenade leaves the hand this far into the throw
+  reach: 0.3,          // it starts this far in front of the eye (less when a wall is closer)
+  handRight: 0.12,     // and from the right hand: this far right of the eye
+  handDown: 0.05,      // and this far below it
   blastRadius: 6,      // metres; the barrel blast is 5
-  blastDamage: 200,    // in the centre, falling off with the square of the distance
+  blastDamage: 200,    // in the centre, falling off with the square of the distance; the centre is the grenade itself
 };
 
 // ---- wave 13: burning (the flamer sets bots alight)
-/** Burn state after a hit by a weapon with `burn` at `now` (ms). `burn` may be null; the result is a new object. */
-export function igniteBurn(burn, spec, now) {
+/** How fire damage reaches a bot: what the flame and the burning pile up is applied every applyMs. */
+export const FLAME = { applyMs: 200 };
+
+/**
+ * Burn state after a hit of `damage` by a weapon with `burn` at `now` (ms). `burn` may be null.
+ * A hit weaker than burn.min (the thin tip of the stream) sets nothing alight. Returns a new object or `burn`.
+ */
+export function igniteBurn(burn, spec, now, damage = Infinity) {
   const b = spec.burn;
-  if (!b) return burn;
+  if (!b || damage < (b.min ?? 0)) return burn;
   const dps = burn && burn.until > now ? Math.max(burn.dps, b.dps) : b.dps;
   return { dps, until: now + b.ms };
 }

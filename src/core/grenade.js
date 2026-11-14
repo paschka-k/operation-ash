@@ -58,10 +58,9 @@ export function launchGrenade({ eye, dir, vel = { x: 0, y: 0, z: 0 }, now = 0, c
     vx: dx * G.speed + vel.x * G.inherit, vy: dy * G.speed + vel.y * G.inherit, vz: dz * G.speed + vel.z * G.inherit,
     born: now, fuseAt: now + G.fuseMs, rest: false, grounded: 0, bounces: 0,
   };
-  // from the eye to the hand: 30 cm forward, unless something is in the way
-  const reach = 0.3;
-  const h = sweepBall(colliders, g.x, g.y, g.z, dir.x, dir.y, dir.z, reach, G.radius);
-  const k = h ? Math.max(0, h.t - SKIN * 2) : reach;
+  // from the eye to the hand: GRENADE.reach forward, unless something is in the way
+  const h = sweepBall(colliders, g.x, g.y, g.z, dir.x, dir.y, dir.z, G.reach, G.radius);
+  const k = h ? Math.max(0, h.t - SKIN * 2) : G.reach;
   g.x += dir.x * k; g.y += dir.y * k; g.z += dir.z * k;
   return g;
 }

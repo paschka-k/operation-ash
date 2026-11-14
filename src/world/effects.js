@@ -704,11 +704,14 @@ export class FX {
     }
   }
 
-  /** Flames licking up a burning body standing at (x, y, z). Call every frame it burns. */
-  burning(x, y, z, scale = 1, dt = 1 / 60) {
-    this._burnAcc = (this._burnAcc || 0) + dt * 30 * this.quality;
-    while (this._burnAcc > 1) {
-      this._burnAcc -= 1;
+  /**
+   * Flames licking up a burning body standing at (x, y, z). Call every frame it burns. `owner` is the
+   * burning thing: it keeps its own count of flames due, so every body burns at the same rate.
+   */
+  burning(x, y, z, scale = 1, dt = 1 / 60, owner = this) {
+    owner.flamesDue = (owner.flamesDue || 0) + dt * 30 * this.quality;
+    while (owner.flamesDue > 1) {
+      owner.flamesDue -= 1;
       this.flames.emit(x + rr(-0.22, 0.22) * scale, y + rr(0.2, 1.5) * scale, z + rr(-0.22, 0.22) * scale,
         rr(-0.2, 0.2), rr(0.9, 1.9), rr(-0.2, 0.2), rr(0.3, 0.6), 0.26 * scale, 0.06, 1, rr(0.35, 0.6), 0.1, 0.8, -0.6, 0.8);
       if (rnd() < 0.2) this.smoke.emit(x, y + 1.7 * scale, z, rr(-0.2, 0.2), rr(0.8, 1.4), rr(-0.2, 0.2), rr(1.2, 2), 0.3, 1.2, 0.1, 0.095, 0.09, 0.3, -0.3, 0.5);

@@ -3,7 +3,7 @@
 import { test, assert, near } from '../harness.mjs';
 import {
   WEAPON_SPECS, WEAPON_ORDER, PLAYER, ENEMY_TYPES, damageAtRange, effectiveSpread, fireInterval, moveSpeed, enemyParams,
-  igniteBurn, burnDamage,
+  igniteBurn, burnDamage, FLAME,
 } from '../../src/core/rules.js';
 import {
   createArsenal, tryFire, tickWeapons, switchTo, setTrigger, spinLevel, weaponMoveMul, giveWeapon, beginReload,
@@ -117,6 +117,9 @@ test('burning: a flame hit sets a bot alight for a while, more hits keep it burn
   const again = igniteBurn(b, f, 2000);
   assert.equal(again.until, 2000 + f.burn.ms);
   assert.equal(igniteBurn(b, WEAPON_SPECS.rifle, 2000), b, 'bullets do not set anything alight');
+  assert.equal(igniteBurn(null, f, 1000, f.burn.min - 0.01), null, 'the thin tip of the stream sets nothing alight');
+  assert.ok(igniteBurn(null, f, 1000, f.burn.min), 'a hit of burn.min does');
+  assert.ok(FLAME.applyMs > 0 && FLAME.applyMs <= 500, 'fire damage is applied a few times a second');
 });
 
 test('minigun: no shot until the barrels have spun up, then a very high rate', () => {
@@ -198,20 +201,31 @@ test('the weapon in hand changes how fast the player moves', () => {
   assert.ok(weaponMoveMul(a) > 1, 'the smg is light');
 });
 
-test('every new weapon fires, empties and reloads through the same rules', () => {
+test('every new weapon fires, empties its magazine and reloads through the same rules', () => {
   for (const id of NEW) {
     const spec = WEAPON_SPECS[id];
     const a = createArsenal(id);
     tickWeapons(a, 0);
-    setTrigger(a, true);
-    let t = 0;
-    for (; t < 2000; t += FRAME) tickWeapons(a, t);           // spin up where needed
-    const r = tryFire(a, t);
-    assert.equal(r.ok, true, id + ' fires');
-    assert.equal(r.pellets, spec.pellets);
-    assert.equal(a.weapons[id].mag, spec.mag - 1);
-    assert.equal(beginReload(a, t + 5000), true, id + ' reloads');
-    tickWeapons(a, t + 5000 + spec.reloadMs + 1);
-    assert.deepEqual(a.weapons[id], { mag: spec.mag, reserve: spec.reserve - 1 }, id + ' after the reload');
+    setTrigger(a, true);                                   // the trigger stays down (spins the minigun up)
+    let t = 0, shots = 0, empty = null;
+    for (; t < 60000 && !empty; t += FRAME) {
+      tickWeapons(a, t);
+      for (let i = 0; i < 3; i++) {
+        const r = tryFire(a, t);
+        if (r.ok) { shots++; assert.equal(r.pellets, spec.pellets); continue; }
+        if (r.reason === 'empty') empty = r;
+        break;
+      }
+    }
+    assert.equal(shots, spec.mag, id + ' fires its whole magazine');
+    assert.ok(empty && empty.reloading, id + ' clicks empty and starts a reload by itself');
+    assert.equal(a.weapons[id].mag, 0);
+    assert.equal(tryFire(a, t).reason, 'reloading');
+    tickWeapons(a, t + spec.reloadMs - 50);
+    assert.equal(a.weapons[id].mag, 0, id + ' still reloading');
+    tickWeapons(a, t + spec.reloadMs + 1);
+    assert.deepEqual(a.weapons[id], { mag: spec.mag, reserve: spec.reserve - spec.mag }, id + ' after the reload');
+    const fired = tryFire(a, t + spec.reloadMs + 2000);
+    assert.equal(fired.ok, true, id + ' fires again after the reload');
   }
 });

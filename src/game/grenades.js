@@ -59,8 +59,8 @@ export class Grenades {
     cam.updateMatrixWorld();
     const d = this._dir.set(0, 0, -1).applyQuaternion(cam.quaternion);
     const r = this._right.set(1, 0, 0).applyQuaternion(cam.quaternion);
-    // from the right hand: a little to the right of the eye (never further than the body reaches)
-    const eye = { x: cam.position.x + r.x * 0.12, y: cam.position.y - 0.05, z: cam.position.z + r.z * 0.12 };
+    // from the right hand: a little to the right of and below the eye (never further than the body reaches)
+    const eye = { x: cam.position.x + r.x * GRENADE.handRight, y: cam.position.y - GRENADE.handDown, z: cam.position.z + r.z * GRENADE.handRight };
     return this.launch(eye, { x: d.x, y: d.y, z: d.z }, { x: p.vx, y: p.vy, z: p.vz });
   }
 
@@ -99,12 +99,16 @@ export class Grenades {
     }
   }
 
-  /** The blast: the barrel's explosion, with the grenade's radius and damage. */
+  /**
+   * The blast: the barrel's explosion, with the grenade's radius and damage, centred on the grenade
+   * (combat.explode lifts its own line of sight). Once the player is dead a grenade still goes off, but
+   * hurts nobody: kills after death would be credited to a player who is no longer in the fight.
+   */
   blast(n) {
-    const g = this.game, x = n.x, y = n.y + 0.3, z = n.z;
+    const g = this.game, x = n.x, y = n.y, z = n.z;
     g.fx.explosion(x, Math.max(0, n.y - GRENADE.radius), z, 0.85);
     g.audio.explosion(x, y, z);
-    g.props.explode(x, y, z, GRENADE.blastRadius, GRENADE.blastDamage, 'grenade');
+    if (g.player.alive) g.props.explode(x, y, z, GRENADE.blastRadius, GRENADE.blastDamage, 'grenade');
   }
 
   /** Grenades in flight or on the ground, for tests and the HUD. */

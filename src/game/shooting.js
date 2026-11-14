@@ -12,7 +12,7 @@ import {
   addAmmoAll, reloadProgress, specOf, giveWeapon, cycleWeapon, WEAPON_ORDER, START_WEAPONS,
   setTrigger, spinLevel, weaponMoveMul, takeGrenade,
 } from '../core/weapons.js';
-import { GRENADE, igniteBurn, burnDamage } from '../core/rules.js';
+import { GRENADE, FLAME, igniteBurn, burnDamage, fireInterval } from '../core/rules.js';
 import { resolveShot, damageAtRange } from '../core/combat.js';
 import { recordShots } from '../core/waves.js';
 import { createViewmodel } from '../weapons/viewmodel.js';
@@ -35,6 +35,7 @@ export class Shooting {
     this.throwT = 0;          // seconds left of a grenade throw; the weapon is lowered meanwhile
     this.thrown = false;
     this.flaming = 0;         // seconds the flame stream keeps roaring after the last fuel tick
+    this.lastShotAt = -1e9;   // game time (ms) of the last shot, for the minigun's buzz
     this.nozzle = new THREE.Vector3();
     this.f = new THREE.Vector3();
     this.r = new THREE.Vector3();
@@ -54,6 +55,7 @@ export class Shooting {
     this.aim.last = null;
     this.throwT = 0;
     this.flaming = 0;
+    this.lastShotAt = -1e9;
     this.view.endFlash();
   }
 
@@ -151,8 +153,9 @@ export class Shooting {
     this.updateBurning(dt);
     // the minigun whines and buzzes, the flamer roars: continuous sounds, not one per shot
     this.flaming = Math.max(0, this.flaming - dt);
-    g.audio.weaponLoops(spinLevel(a), !!spec.spinUpMs && this.firedThisFrame, this.flaming > 0);
-    this.firedThisFrame = false;
+    // the buzz lasts while rounds keep coming: a shot within the last two intervals, whatever the frame rate
+    const buzzing = !!spec.spinUpMs && now - this.lastShotAt < 2 * fireInterval(spec) * 1000;
+    g.audio.weaponLoops(spinLevel(a), buzzing, this.flaming > 0);
 
     // viewmodel animation
     let lower = 0;
@@ -209,13 +212,14 @@ export class Shooting {
     const g = this.game, now = g.time * 1000, from = now - dt * 1000;
     for (const c of g.enemies.targets) {
       if (!c.burn && !c.flameDamage) continue;
-      if (!c.alive) { c.burn = null; c.flameDamage = 0; continue; }
+      // a dead player's fire goes out: kills after death would still be credited to them
+      if (!c.alive || !g.player.alive) { c.burn = null; c.flameDamage = 0; continue; }
       c.flameDamage = (c.flameDamage || 0) + burnDamage(c.burn, from, now);
-      if (c.burn && c.burn.until > now) g.fx.burning(c.x, c.y, c.z, c.scale ?? 1, dt);
+      if (c.burn && c.burn.until > now) g.fx.burning(c.x, c.y, c.z, c.scale ?? 1, dt, c);
       else c.burn = null;
       c.flameTick = (c.flameTick || 0) - dt;
       if (c.flameTick > 0 || c.flameDamage < 1) continue;
-      c.flameTick = 0.2;
+      c.flameTick = FLAME.applyMs / 1000;
       const amount = c.flameDamage;
       c.flameDamage = 0;
       const res = c.view.takeDamage(amount, 'body', { x: 0, y: 1, z: 0 }, 'player', { x: c.x, y: c.y + 1.1, z: c.z });
@@ -241,7 +245,7 @@ export class Shooting {
   /** The core said the shot is on: resolve it and show it. r comes from tryFire. */
   fire(r) {
     const g = this.game, spec = r.spec, player = g.player, cam = g.gr.camera;
-    this.firedThisFrame = true;
+    this.lastShotAt = g.time * 1000;
     if (spec.flame) { this.fireFlame(r); return; }
     this.shotCount++;
     cam.updateMatrixWorld();
@@ -324,7 +328,7 @@ export class Shooting {
       if (h.kind === 'target') {
         const c = h.target;
         c.flameDamage = (c.flameDamage || 0) + dmg;
-        if (dmg >= 1) c.burn = igniteBurn(c.burn, spec, now);      // the thin tip of the stream does not set anyone alight
+        c.burn = igniteBurn(c.burn, spec, now, dmg);
         anyHit = true;
       } else if (h.kind === 'world' && h.collider && h.collider.owner && g.props.damageOwner(h.collider.owner, dmg)) propHit = true;
     }
