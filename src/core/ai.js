@@ -370,7 +370,7 @@ function combatCover(e, world, intent, dt, dist, toP) {
 
 /**
  * The bot was hit. Pulls it into combat when it was not fighting yet and makes
- * a bot that is shot in cover look for another spot. Returns {alert} radius.
+ * a bot that is shot (or burnt: source 'fire') in cover look for another spot. Returns {alert} radius.
  */
 export function enemyHurt(e, { source = 'player', player, rng = Math.random }) {
   e.flinch = 0.18;
@@ -380,7 +380,7 @@ export function enemyHurt(e, { source = 'player', player, rng = Math.random }) {
     e.lastSeen = { x: player.x, z: player.z };
     return { alert: 14 };
   }
-  if (e.phase === 'covered' && source === 'player') { e.phase = 'seek'; e.cover = null; }
+  if (e.phase === 'covered' && (source === 'player' || source === 'fire')) { e.phase = 'seek'; e.cover = null; }
   return { alert: 0 };
 }
 

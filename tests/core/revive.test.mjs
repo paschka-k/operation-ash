@@ -6,6 +6,7 @@ import {
 } from '../../src/core/waves.js';
 import {
   createArsenal, snapshotArsenal, restoreArsenal, setWeaponLevel, giveWeapon, specOf, tryFire, beginReload, START_WEAPONS,
+  setTrigger, spinLevel, tickWeapons,
 } from '../../src/core/weapons.js';
 import { ECONOMY } from '../../src/core/rules.js';
 import { buyArmor } from '../../src/core/shop.js';
@@ -196,4 +197,25 @@ test('snapshotArsenal is a deep copy and restoreArsenal brings back weapons, lev
   restoreArsenal(a, snap);
   assert.equal(a.weapons.rifle.mag, 17);
   assert.equal(snap.weapons.rifle.mag, 17);
+});
+
+test('a checkpoint taken with the minigun spinning brings back the weapon, not the turning barrels', () => {
+  const a = createArsenal('minigun', ['pistol', 'rifle', 'minigun']);
+  a.grenades = 1;
+  setTrigger(a, true);
+  for (let t = 0; t <= 1000; t += 50) tickWeapons(a, t);
+  assert.equal(spinLevel(a), 1, 'the barrels are up to speed');
+  const snap = snapshotArsenal(a);
+  assert.equal(snap.spin, undefined, 'the spin is no part of a checkpoint');
+  assert.equal(snap.trigger, undefined, 'nor the held trigger');
+  // after the checkpoint: a grenade thrown, the belt shot down
+  a.grenades = 0;
+  a.weapons.minigun.mag = 12;
+  restoreArsenal(a, snap);
+  assert.equal(a.current, 'minigun');
+  assert.equal(a.grenades, 1, 'the grenades of the checkpoint come back');
+  assert.equal(a.weapons.minigun.mag, specOf(a, 'minigun').mag);
+  assert.equal(spinLevel(a), 0, 'the barrels stand still after a revival');
+  assert.equal(a.trigger, false);
+  assert.equal(tryFire(a, 1100).reason, 'spinning', 'they must spin up again before the first round');
 });

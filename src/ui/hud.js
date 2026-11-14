@@ -83,7 +83,7 @@ export class HUD {
         <button class="btn primary" id="btn-play" data-t="play"></button>
         <button class="btn" id="btn-settings" data-t="settings"></button>
         <button class="btn" id="btn-controls" data-t="controls"></button>
-        <div class="mini-ctl">${['move', 'jump', 'sprint', 'fire', 'aim', 'reload', 'switch', 'pause'].map((k) => `<div><span data-t="ctl_${k}"></span><b data-k="${k}" data-kp="1"></b></div>`).join('')}</div>
+        <div class="mini-ctl">${['move', 'jump', 'sprint', 'fire', 'aim', 'reload', 'switch', 'grenade', 'inventory', 'pause'].map((k) => `<div><span data-t="ctl_${k}"></span><b data-k="${k}" data-kp="1"></b></div>`).join('')}</div>
         <div class="hint" data-t="hintStart"></div>
       </div>`);
 
@@ -120,7 +120,7 @@ export class HUD {
         <button class="btn" id="btn-sback" data-t="back"></button>
       </div>`);
 
-    const ctl = ['move', 'look', 'jump', 'sprint', 'crouch', 'fire', 'aim', 'reload', 'switch', 'map', 'pause', 'fps']
+    const ctl = ['move', 'look', 'jump', 'sprint', 'crouch', 'fire', 'aim', 'reload', 'switch', 'grenade', 'inventory', 'map', 'pause', 'fps']
       .map((k) => `<div class="ctl"><span class="ctl-name" data-t="ctl_${k}"></span><span class="ctl-key" data-k="${k}"></span><span class="ctl-pad" data-pk="${k}"></span></div>`).join('');
     mk('controls', `
       <div class="panel controls">
@@ -251,6 +251,7 @@ export class HUD {
       jump: bindingText(b, 'jump'), sprint: bindingText(b, 'sprint'), crouch: bindingText(b, 'crouch'),
       fire: bindingText(b, 'fire'), aim: bindingText(b, 'aim'), reload: bindingText(b, 'reload'),
       switch: [slotText, t('k_wheel'), ...(b.lastWeapon || []).map(keyName)].filter(Boolean).join(', '),
+      grenade: bindingText(b, 'grenade'), inventory: bindingText(b, 'inventory'),
       map: bindingText(b, 'map'), pause: 'Esc', fps: 'F3',
     };
     const pad = g.pad && g.pad.showHints() ? g.pad.layout() : null;
@@ -263,9 +264,13 @@ export class HUD {
       n.textContent = padText(n.dataset.pk);
       n.classList.toggle('hidden', !pad);
     });
-    // the prompt on an empty magazine names what reloads with the device in use
-    this.reloadKey = g.lastDevice === 'pad' && pad ? padHint('reload', pad) : first('reload');
+    // prompts on the HUD (an empty magazine, the grenade counter, the inventory) name what does it
+    // with the device in use
+    const prompt = (a) => (g.lastDevice === 'pad' && pad ? padHint(a, pad) : first(a));
+    this.reloadKey = prompt('reload');
+    this.prompts = { grenade: prompt('grenade'), inventory: prompt('inventory') };
     delete this.cache['h-awarn'];
+    delete this.cache.gren;
     if (g.keys) g.keys.refresh();
   }
 
@@ -358,7 +363,9 @@ export class HUD {
   killfeed(name, head, source, pts, streak) {
     const feed = this.q('h-feed');
     const line = el('div', 'feed-line' + (head ? ' head' : ''));
-    const how = source === 'barrel' ? ' · ' + t('barrel') : head ? ' · ' + t('headshot') : '';
+    // how the bot died, when it was not a plain shot: a barrel, a grenade, the flamer's fire
+    const cause = { barrel: 'barrel', grenade: 'grenade', fire: 'killFire' }[source];
+    const how = cause ? ' · ' + t(cause) : head ? ' · ' + t('headshot') : '';
     line.innerHTML = `<span class="feed-name">${name}${how}</span><span class="feed-pts">+${pts}</span>` + (streak >= 3 ? `<span class="feed-streak">${t('streak')} ×${streak}</span>` : '');
     feed.appendChild(line);
     while (feed.children.length > 5) feed.firstChild.remove();
@@ -479,7 +486,33 @@ export class HUD {
   updateEconomy(dt) { if (this.game.shop) this.game.shop.updateHud(dt); }
 
   // ---- wave 13: grenades (#h-gren) and the sniper scope (#h-scope). w is weapons.hudInfo()
-  updateWeaponExtras(dt, w) {}
+  updateWeaponExtras(dt, w) {
+    const q = this.q;
+    if (!this._extras) {
+      // built once: the scope is a dark mask with a round window, a reticle and a lens shadow
+      q('h-scope').innerHTML = '<div class="scope-lens"></div><div class="scope-cross"><i class="h"></i><i class="v"></i><i class="ph l"></i><i class="ph r"></i><i class="ph b"></i><i class="dot"></i></div>';
+      q('h-gren').classList.remove('hidden');
+      this._extras = true;
+    }
+    // grenades: an icon, how many, and the key (or the pad button) that throws one
+    const key = (this.prompts && this.prompts.grenade) || '';
+    const gren = w.grenades + '|' + key;
+    if (this.cache.gren !== gren) {
+      this.cache.gren = gren;
+      const k = q('h-gren');
+      k.innerHTML = `<span class="gren-key"></span><i class="gren-ico"></i><b>×${w.grenades}</b>`;
+      k.firstChild.textContent = key;
+      k.classList.toggle('none', w.grenades === 0);
+      k.title = t('grenades');
+    }
+    // the scope covers the view once the rifle is up at the eye (the model is hidden from then on);
+    // the big map and the inventory lower it (Shooting.overlayOpen), so it never shows under them
+    const on = !!w.scope && w.ads > 0.8 && !this.game.weapons.overlayOpen();
+    q('h-scope').classList.toggle('hidden', !on);
+    if (on) q('h-scope').style.opacity = String(Math.min(1, (w.ads - 0.8) / 0.12));
+    // the flamer counts fuel, not rounds: the counter turns the colour of flame
+    q('h-mag').classList.toggle('fuel', !!w.fuel);
+  }
 
   // Drawn in a 300 x 300 layout (the size on screen in CSS pixels) on a canvas of twice that, so it stays sharp.
   drawRadar() {

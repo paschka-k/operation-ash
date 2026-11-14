@@ -147,6 +147,16 @@ test('a hit pulls a calm bot into combat and makes a hidden bot move', () => {
   hidden.state = 'combat'; hidden.phase = 'covered'; hidden.cover = { x: 1, z: 1 };
   enemyHurt(hidden, { source: 'player', player: { x: 5, z: 5 }, rng: createRng(1) });
   assert.equal(hidden.phase, 'seek'); assert.equal(hidden.cover, null);
+  // the player's flamer burns a bot out of its cover too (its damage comes with source 'fire')
+  const burning = createEnemy({ x: 0, z: 0 }, 1, createRng(1));
+  burning.state = 'combat'; burning.phase = 'covered'; burning.cover = { x: 1, z: 1 };
+  enemyHurt(burning, { source: 'fire', player: { x: 5, z: 5 }, rng: createRng(1) });
+  assert.equal(burning.phase, 'seek');
+  // a barrel going off next to it does not
+  const shaken = createEnemy({ x: 0, z: 0 }, 1, createRng(1));
+  shaken.state = 'combat'; shaken.phase = 'covered'; shaken.cover = { x: 1, z: 1 };
+  enemyHurt(shaken, { source: 'barrel', player: { x: 5, z: 5 }, rng: createRng(1) });
+  assert.equal(shaken.phase, 'covered');
 });
 test('a bot that walks into a wall repaths instead of pushing forever', () => {
   const w = makeWorld({ player: { x: 0, z: 40 } });

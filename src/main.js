@@ -14,6 +14,7 @@ import { createInput } from './player/input.js';
 import { Shooting } from './game/shooting.js';
 import { createSquad } from './enemies/squad.js';
 import { Director } from './game/director.js';
+import { createGrenades } from './game/grenades.js';
 import { createHud } from './ui/hud.js';
 import { createShop } from './ui/shop.js';
 import { clamp, lerp, lineOfSight } from './core/collision.js';
@@ -79,6 +80,7 @@ class Game {
     this.weapons = new Shooting(this);
     this.enemies = createSquad(this);
     this.director = new Director(this);
+    this.grenades = createGrenades(this);
     this.shop = createShop(this);      // the shop screen, the inventory overlay, money and armour on the HUD
 
     this.gr.prepareScene();
@@ -169,6 +171,7 @@ class Game {
     this.acc = 0;
     this.enemies.clear();
     this.props.clear();
+    this.grenades.clear();
     this.fx.clear();
     this.world._places();
     this.player.reset();
@@ -214,6 +217,11 @@ class Game {
     this.player.damageFlash = 0;
     this.gr.uniforms.damage.value = 0;
     this.gr.uniforms.lowHealth.value = 0;
+    // the shop stops the simulation, so nothing would quiet the minigun or the flamer, or lower a scope;
+    // a grenade still on its fuse would hang in the air and go off in the countdown after the shop
+    this.audio.weaponLoops(0, false, false);
+    this.weapons.lowerSights();
+    this.grenades.clear();
     this.shop.open();
   }
 
@@ -228,7 +236,8 @@ class Game {
     this.hud.showHud(true);
     this.audio.resume();
     this.last = performance.now();
-    if (!this.testMode) this.input.lock();   // a click on the button is a user gesture; a refusal leaves the canvas click
+    // a click on the button is a user gesture; a refusal leaves the canvas click. A gamepad press is none.
+    if (!this.testMode && this.lastDevice !== 'pad') this.input.lock();
   }
 
   /** "Revive at wave N": the scene is cleared, the checkpoint of that wave comes back and the wave starts again. */
@@ -238,8 +247,9 @@ class Game {
     this.audio.resume();
     this.input.releaseAll();
     this.acc = 0;
-    this.enemies.clear();
+    this.enemies.clear();            // burning bots go with them
     this.props.clear();
+    this.grenades.clear();           // a grenade thrown before the death must not go off in the new attempt
     this.fx.clear();
     this.world._places();
     this.player.reset();
@@ -266,6 +276,7 @@ class Game {
     this.input.unlock();
     this.input.releaseAll();
     this.audio.suspend();
+    this.weapons.lowerSights();     // the aim button was let go with everything else
     this.hud.showScreen('pause');
     this.shop.closeInventory();
   }
@@ -292,6 +303,7 @@ class Game {
     this.input.unlock();
     this.audio.resume();
     this.enemies.clear();
+    this.grenades.clear();
     this.hud.showHud(false);
     this.hud.showScreen('menu');
     this.gr.uniforms.fade.value = 1;
@@ -387,6 +399,7 @@ class Game {
       this.enemies.update(dt);
       this.director.update(dt);
       this.props.update(dt);
+      this.grenades.update(dt);
     } else if (st === 'menu') {
       this.menuCamera(dt);
     }

@@ -34,6 +34,7 @@ export class BigMap {
     if (this.isOpen) return;
     this.isOpen = true;
     const g = this.game;
+    if (g.shop && g.shop.invOpen) g.shop.closeInventory(); // one overlay at a time
     // texts follow the language and the bindings of the moment
     const keys = (g.settings.bindings && g.settings.bindings.map) || [];
     let hint = keys.length ? keyName(keys[0]) : '';

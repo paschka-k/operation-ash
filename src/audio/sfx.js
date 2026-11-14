@@ -5,6 +5,15 @@
 const rnd = Math.random;
 const rr = (a, b) => a + (b - a) * rnd();
 
+// Shots of the wave 13 guns: crack [Hz, s, gain], body [Hz, s, gain, end Hz, rate], thump [Hz, s, gain, end Hz],
+// hiss [Hz, s, gain], echo [delay s, s, gain] (a far wall answering), send: share into the reverb.
+const GUN13 = {
+  smg: { send: 0.28, crack: [4200, 0.06, 0.7], body: [1500, 0.15, 0.55, 220, 0.8], thump: [170, 0.1, 0.6, 50] },
+  carbine: { send: 0.34, crack: [3000, 0.11, 0.85], body: [1300, 0.32, 0.85, 150, 0.7], thump: [105, 0.2, 1.0, 36], hiss: [5000, 0.12, 0.2] },
+  sniper: { send: 0.7, crack: [2600, 0.14, 1.0], body: [1100, 0.9, 1.2, 70, 0.5], thump: [80, 0.45, 1.2, 26], hiss: [4500, 0.2, 0.3], echo: [0.32, 0.8, 0.35] },
+  lmg: { send: 0.36, crack: [3100, 0.1, 0.8], body: [1300, 0.28, 0.8, 160, 0.7], thump: [110, 0.17, 0.95, 40], hiss: [5000, 0.1, 0.16] },
+};
+
 export class AudioSys {
   constructor(game) {
     this.game = game;
@@ -196,6 +205,8 @@ export class AudioSys {
   gun(kind, pos = null) {
     if (!this.ready) return;
     if (kind === 'shotgun') { this._shotgun(pos); return; }
+    if (GUN13[kind]) { this._gun13(GUN13[kind], pos); return; }
+    if (kind === 'minigun' || kind === 'flamer') return;     // continuous sounds: weaponLoops()
     const rifle = kind === 'rifle' || kind === 'enemy';
     const far = pos ? Math.hypot(pos.x - this.game.gr.camera.position.x, pos.z - this.game.gr.camera.position.z) : 0;
     const dest = this._bus(pos, pos ? 0.45 : 0.3);
@@ -213,6 +224,92 @@ export class AudioSys {
     this._noise(dest, { dur: 0.5, type: 'lowpass', f: 1500, f2: 110, q: 0.6, gain: 1.1, rate: 0.5 });
     this._tone(dest, { dur: 0.32, type: 'sine', f: 95, f2: 30, gain: 1.1 });
     this._noise(dest, { t: 0.03, dur: 0.18, type: 'highpass', f: 4000, q: 0.5, gain: 0.25 });
+  }
+
+  // ---- wave 13: new weapons, the minigun and the flamer as loops, grenades
+  /** A shot of one of the wave 13 guns; p is its row of GUN13. */
+  _gun13(p, pos) {
+    const far = pos ? Math.hypot(pos.x - this.game.gr.camera.position.x, pos.z - this.game.gr.camera.position.z) : 0;
+    const dest = this._bus(pos, p.send);
+    const dull = Math.min(1, far / 60);
+    this._noise(dest, { dur: p.crack[1], type: 'bandpass', f: p.crack[0] * (1 - dull * 0.6), f2: 900, q: 0.7, gain: p.crack[2], rate: 1.2 });
+    this._noise(dest, { dur: p.body[1], type: 'lowpass', f: p.body[0], f2: p.body[3], q: 0.6, gain: p.body[2], rate: p.body[4] });
+    this._tone(dest, { dur: p.thump[1], type: 'sine', f: p.thump[0], f2: p.thump[3], gain: p.thump[2] });
+    if (p.hiss) this._noise(dest, { t: 0.02, dur: p.hiss[1], type: 'highpass', f: p.hiss[0], q: 0.5, gain: p.hiss[2] });
+    if (p.echo) this._noise(dest, { t: p.echo[0], dur: p.echo[1], type: 'lowpass', f: 700, f2: 120, q: 0.6, gain: p.echo[2], attack: 0.05, rate: 0.6 });
+  }
+
+  /**
+   * Continuous weapon sounds, set every frame by the shooting layer: the whine of the minigun's
+   * barrels (spin 0..1), its buzz while it fires, the roar of the flamer. All silent when nothing runs.
+   */
+  weaponLoops(spin = 0, firing = false, flame = false) {
+    if (!this.ready) return;
+    if (!this._loops) {
+      if (spin <= 0 && !firing && !flame) return;
+      this._loops = this._makeLoops();
+    }
+    const L = this._loops, t = this.ctx.currentTime;
+    L.whine.frequency.setTargetAtTime(90 + 640 * spin, t, 0.05);
+    L.whine2.frequency.setTargetAtTime(46 + 322 * spin, t, 0.05);
+    L.whineGain.gain.setTargetAtTime(spin > 0.01 ? 0.025 + 0.07 * spin : 0, t, 0.05);
+    L.buzzGain.gain.setTargetAtTime(firing ? 0.6 : 0, t, firing ? 0.01 : 0.04);
+    L.flameGain.gain.setTargetAtTime(flame ? 0.6 : 0, t, flame ? 0.03 : 0.12);
+  }
+
+  _makeLoops() {
+    const ctx = this.ctx, out = this._bus(null, 0.25);
+    const loop = (rate = 1) => { const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true; s.playbackRate.value = rate; return s; };
+    const filter = (type, f, q) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = q; return n; };
+    const gain = (v) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+    const osc = (type, f) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; return o; };
+    // whine: two oscillators through a band, rising with the barrels
+    const whine = osc('sawtooth', 90), whine2 = osc('square', 46), wf = filter('bandpass', 900, 0.7), whineGain = gain(0);
+    whine.connect(wf); whine2.connect(wf); wf.connect(whineGain); whineGain.connect(out);
+    // buzz: noise and a growl chopped thirty times a second, one chop per round
+    const buzz = loop(), bf = filter('lowpass', 2400, 0.5), growl = osc('sawtooth', 60), gf = filter('lowpass', 320, 0.7);
+    const chop = gain(0.5), lfo = osc('square', 30), depth = gain(0.5), buzzGain = gain(0);
+    lfo.connect(depth); depth.connect(chop.gain);
+    buzz.connect(bf); bf.connect(chop); growl.connect(gf); gf.connect(chop); chop.connect(buzzGain); buzzGain.connect(out);
+    // roar: low rumbling noise with a crackle on top
+    const roar = loop(0.6), rf = filter('lowpass', 650, 0.8), crack = loop(1.3), cf = filter('bandpass', 2600, 1.5), crackle = gain(0.22), flameGain = gain(0);
+    roar.connect(rf); rf.connect(flameGain); crack.connect(cf); cf.connect(crackle); crackle.connect(flameGain); flameGain.connect(out);
+    for (const n of [whine, whine2, buzz, growl, lfo, roar, crack]) n.start();
+    return { whine, whine2, whineGain, buzzGain, flameGain };
+  }
+
+  /** The sniper's bolt worked after a shot: lift, pull, push, lock. */
+  bolt() {
+    if (!this.ready) return;
+    const dest = this._bus(null, 0.08);
+    this._noise(dest, { t: 0.1, dur: 0.04, type: 'bandpass', f: 2400, q: 3, gain: 0.4 });
+    this._noise(dest, { t: 0.3, dur: 0.07, type: 'bandpass', f: 1500, q: 2, gain: 0.5 });
+    this._tone(dest, { t: 0.3, dur: 0.06, type: 'square', f: 700, f2: 420, gain: 0.04 });
+    this._noise(dest, { t: 0.56, dur: 0.06, type: 'bandpass', f: 1900, q: 2.5, gain: 0.5 });
+    this._noise(dest, { t: 0.8, dur: 0.05, type: 'bandpass', f: 2800, q: 3, gain: 0.45 });
+    this._tone(dest, { t: 0.8, dur: 0.06, type: 'sine', f: 240, f2: 120, gain: 0.18 });
+  }
+
+  /** The pin pulled out of a grenade. */
+  grenadePin() {
+    if (!this.ready) return;
+    const dest = this._bus(null, 0.05);
+    this._tone(dest, { dur: 0.06, type: 'triangle', f: 2600, f2: 2100, gain: 0.12 });
+    this._noise(dest, { t: 0.05, dur: 0.04, type: 'bandpass', f: 3300, q: 4, gain: 0.28 });
+  }
+
+  /** The arm swinging and letting go. */
+  grenadeThrow() {
+    if (!this.ready) return;
+    this._noise(this._bus(null, 0.05), { dur: 0.24, type: 'bandpass', f: 450, f2: 1900, q: 1.2, gain: 0.3, attack: 0.07 });
+  }
+
+  /** A grenade hitting something: a metal clink and a thud, louder the faster it was. */
+  grenadeBounce(pos, speed = 5) {
+    if (!this.ready) return;
+    const k = Math.min(1, speed / 10), dest = this._bus(pos, 0.15);
+    this._tone(dest, { dur: 0.12, type: 'triangle', f: rr(1400, 1900), f2: rr(900, 1200), gain: 0.05 + 0.2 * k });
+    this._noise(dest, { dur: 0.06, type: 'lowpass', f: 900, q: 0.7, gain: 0.06 + 0.4 * k });
   }
 
   /** One shell pushed into a pump gun. */
@@ -436,6 +533,7 @@ export class AudioSys {
     if (!this.ready) return;
     const cam = this.game.gr.camera;
     this.setListener(cam.position, cam.getWorldDirection(this._fwd || (this._fwd = cam.position.clone())));
+    if (this._loops && this.game.state !== 'playing') this.weaponLoops(0, false, false);   // a menu or a death screen silences them
     // distant fighting and rumbles
     this.ambTimer -= dt;
     if (this.ambTimer <= 0 && this.game.state === 'playing') {
