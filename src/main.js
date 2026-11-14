@@ -343,8 +343,8 @@ class Game {
 
   idleInput() {
     return this._idle || (this._idle = {
-      isDown: () => false, recent: () => false, clearRecent() {}, pressed: () => false,
-      takeWheel: () => 0, left: false, right: false,
+      action: () => false, actionPressed: () => false, actionRecent: () => false, clearActionRecent() {},
+      isDown: () => false, pressed: () => false, takeWheel: () => 0, left: false, right: false,
     });
   }
 

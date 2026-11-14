@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { raycast, clamp, lerp } from '../core/collision.js';
 import {
   createArsenal, resetArsenal, tryFire, beginReload, switchTo, tickWeapons, setStance, spreadDeg, totalAmmo,
-  addAmmoAll, reloadProgress, WEAPON_SPECS, WEAPON_ORDER,
+  addAmmoAll, reloadProgress, specOf, giveWeapon, cycleWeapon, WEAPON_ORDER, START_WEAPONS,
 } from '../core/weapons.js';
 import { resolveShot, damageAtRange } from '../core/combat.js';
 import { recordShots } from '../core/waves.js';
@@ -23,7 +23,7 @@ const ease = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 export class Shooting {
   constructor(game) {
     this.game = game;
-    this.arsenal = createArsenal();
+    this.arsenal = createArsenal('rifle', START_WEAPONS);
     this.view = createViewmodel(game);
     this.ads = 0;
     this.fireHeld = false;
@@ -39,7 +39,7 @@ export class Shooting {
   get cur() { const a = this.arsenal; return { id: a.current, ...a.weapons[a.current] }; }
 
   reset() {
-    resetArsenal(this.arsenal);
+    resetArsenal(this.arsenal, 'rifle', START_WEAPONS);
     this.view.setWeapon(this.arsenal.current);
     this.ads = 0;
     this.fireHeld = false;
@@ -50,17 +50,21 @@ export class Shooting {
   }
 
   adsAmount() { return this.ads; }
-  zoomRatio() { return lerp(1, WEAPON_SPECS[this.arsenal.current].zoom, ease(this.ads)); }
+  zoomRatio() { return lerp(1, specOf(this.arsenal).zoom, ease(this.ads)); }
   totalAmmo() { return totalAmmo(this.arsenal); }
-  /** An ammo box: one magazine for every weapon. */
+  /** An ammo box: one magazine for every owned weapon. */
   addAmmo() { return addAmmoAll(this.arsenal, 1); }
+  /** Give the player a weapon with full ammunition (the shop, tests). */
+  give(id) { return giveWeapon(this.arsenal, id); }
+  /** Debug: every weapon in the game. */
+  giveAll() { for (const id of WEAPON_ORDER) giveWeapon(this.arsenal, id); }
   firingLock() {
     const a = this.arsenal;
     return this.game.input.left && a.weapons[a.current].mag > 0 && !a.reload && !a.switching;
   }
 
   hudInfo() {
-    const a = this.arsenal, spec = WEAPON_SPECS[a.current], w = a.weapons[a.current];
+    const a = this.arsenal, spec = specOf(a), w = a.weapons[a.current];
     const now = this.game.time * 1000;
     return {
       name: spec.nameKey, id: a.current, mag: w.mag, reserve: w.reserve, magSize: spec.mag,
@@ -71,7 +75,7 @@ export class Shooting {
 
   startReload() {
     const a = this.arsenal, now = this.game.time * 1000;
-    const id = a.current, spec = WEAPON_SPECS[id];
+    const id = a.current, spec = specOf(a, id);
     if (beginReload(a, now) && !spec.perShell) this.game.audio.reload(id, spec.reloadMs / 1000);
   }
 
@@ -86,16 +90,13 @@ export class Shooting {
 
     setStance(a, { ads: this.ads, speed01: player.speedFrac, airborne: !player.pos.onGround, crouched: player.crouchHeld });
 
-    // keys: switch weapons, reload
+    // actions: switch weapons (slot N is WEAPON_ORDER[N - 1], only owned ones answer), reload
     if (player.alive) {
-      WEAPON_ORDER.forEach((id, i) => { if (input.pressed('Digit' + (i + 1))) this.startSwitch(id); });
-      if (input.pressed('KeyQ')) this.startSwitch(a.previous);
+      WEAPON_ORDER.forEach((id, i) => { if (input.actionPressed('slot' + (i + 1))) this.startSwitch(id); });
+      if (input.actionPressed('lastWeapon') && a.previous) this.startSwitch(a.previous);
       const wheel = input.takeWheel();
-      if (wheel !== 0) {
-        const i = WEAPON_ORDER.indexOf(a.current);
-        this.startSwitch(WEAPON_ORDER[(i + (wheel > 0 ? 1 : -1) + WEAPON_ORDER.length) % WEAPON_ORDER.length]);
-      }
-      if (input.pressed('KeyR')) this.startReload();
+      if (wheel !== 0) this.startSwitch(cycleWeapon(a, wheel > 0 ? 1 : -1));
+      if (input.actionPressed('reload')) this.startReload();
     } else input.takeWheel();
 
     // time passes in the arsenal: reloads finish, switches happen
@@ -104,7 +105,7 @@ export class Shooting {
       else if (ev.type === 'shell') { g.audio.shell(); this.view.shell(); }
       else if (ev.type === 'reloadDone' && ev.pump) { g.audio.pump(); this.view.pumpNow(); }
     }
-    const spec = WEAPON_SPECS[a.current], w = a.weapons[a.current];
+    const spec = specOf(a), w = a.weapons[a.current];
 
     // aim down sights
     const wantAds = player.alive && input.right && !player.sprinting && !(a.reload && !spec.perShell) && !a.switching;

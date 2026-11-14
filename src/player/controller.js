@@ -115,8 +115,8 @@ export class Player {
     const g = this.game;
 
     // input vector in the local frame
-    const fwd = (input.isDown('KeyW') || input.isDown('ArrowUp') ? 1 : 0) - (input.isDown('KeyS') || input.isDown('ArrowDown') ? 1 : 0);
-    const str = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+    const fwd = (input.action('forward') ? 1 : 0) - (input.action('back') ? 1 : 0);
+    const str = (input.action('right') ? 1 : 0) - (input.action('left') ? 1 : 0);
 
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     let wx = -sy * fwd + cy * str;
@@ -126,7 +126,7 @@ export class Player {
     this.moving = wl > 0.01;
 
     // crouch, standing up needs headroom
-    const wantCrouch = input.isDown('KeyC') || input.isDown('ControlLeft');
+    const wantCrouch = input.action('crouch');
     if (wantCrouch) this.crouchHeld = true;
     else if (this.crouchHeld) {
       const test = { ...b, height: PLAYER.height };
@@ -136,7 +136,7 @@ export class Player {
     b.height = lerp(PLAYER.height, PLAYER.crouchHeight, this.crouch);
 
     // speed
-    const wantSprint = (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && fwd > 0 && !this.crouchHeld && this.adsFactor < 0.3 && !g.weapons.firingLock();
+    const wantSprint = input.action('sprint') && fwd > 0 && !this.crouchHeld && this.adsFactor < 0.3 && !g.weapons.firingLock();
     this.sprinting = wantSprint && b.onGround;
     if (wantSprint && !b.onGround) this.sprinting = this.sprinting || false;
     const speed = moveSpeed({ crouched: this.crouchHeld, sprinting: this.sprinting, ads: this.adsFactor, backwards: fwd < 0 });
@@ -154,11 +154,11 @@ export class Player {
     }
 
     // jump
-    if (input.recent('Space', 130) && (b.onGround || this.coyote > 0) && !this.crouchHeld) {
+    if (input.actionRecent('jump', 130) && (b.onGround || this.coyote > 0) && !this.crouchHeld) {
       b.vy = PLAYER.jump;
       b.onGround = false;
       this.coyote = 0;
-      input.clearRecent('Space');
+      input.clearActionRecent('jump');
       g.audio.jump();
     }
 

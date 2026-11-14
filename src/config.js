@@ -13,6 +13,35 @@ export const QUALITY = {
 };
 export const QUALITY_ORDER = ['low', 'medium', 'high'];
 
+// Key bindings: what the game does (an action) and the physical keys that do it. The game asks
+// for actions, never for keys, so a binding can change without touching the code that reads it.
+// Codes are KeyboardEvent.code values plus Mouse0 (left button), Mouse1 (middle), Mouse2 (right).
+// The mouse wheel is not an action: it always cycles weapons.
+export const ACTIONS = [
+  'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
+  'fire', 'aim', 'reload', 'lastWeapon', 'grenade',
+  'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8', 'slot9',
+  'inventory', 'map',
+];
+export const DEFAULT_BINDINGS = {
+  forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
+  jump: ['Space'], sprint: ['ShiftLeft', 'ShiftRight'], crouch: ['KeyC', 'ControlLeft'],
+  fire: ['Mouse0'], aim: ['Mouse2'], reload: ['KeyR'], lastWeapon: ['KeyQ'], grenade: ['KeyG'],
+  slot1: ['Digit1'], slot2: ['Digit2'], slot3: ['Digit3'], slot4: ['Digit4'], slot5: ['Digit5'],
+  slot6: ['Digit6'], slot7: ['Digit7'], slot8: ['Digit8'], slot9: ['Digit9'],
+  inventory: ['KeyI'], map: ['KeyM'],
+};
+
+/** Bindings with every action present: saved ones win, missing ones come from the defaults. */
+export function mergeBindings(saved) {
+  const out = {};
+  for (const a of ACTIONS) {
+    const s = saved && saved[a];
+    out[a] = Array.isArray(s) ? s.filter((c) => typeof c === 'string') : [...DEFAULT_BINDINGS[a]];
+  }
+  return out;
+}
+
 export const DEFAULT_SETTINGS = {
   sens: 1.0,
   fov: 78,
@@ -24,6 +53,10 @@ export const DEFAULT_SETTINGS = {
   invertY: false,
   showFps: false,
   scans: true,
+  bindings: null,      // filled by loadSettings from DEFAULT_BINDINGS and what was saved
+  // ---- wave 11 settings (controls and screen)
+  // ---- wave 12 settings (economy)
+  // ---- wave 13 settings (weapons)
 };
 
 const KEY = 'ruined-block-fps.settings.v1';
@@ -35,6 +68,7 @@ export function loadSettings() {
     if (raw) Object.assign(s, JSON.parse(raw));
   } catch (e) { /* storage may be blocked */ }
   if (!QUALITY[s.quality]) s.quality = 'medium';
+  s.bindings = mergeBindings(s.bindings);
   return s;
 }
 
@@ -114,6 +148,13 @@ const STR = {
     webglFail: 'Нужен современный браузер с поддержкой WebGL 2. Включите аппаратное ускорение.',
     fpsLabel: 'FPS',
     qualityDropped: 'Качество снижено до',
+
+    // ---- wave 11: controls and screen
+
+    // ---- wave 12: economy
+
+    // ---- wave 13: weapons and grenades
+
   },
   en: {
     title: 'OPERATION ASH',
@@ -185,6 +226,13 @@ const STR = {
     webglFail: 'A modern browser with WebGL 2 is required. Enable hardware acceleration.',
     fpsLabel: 'FPS',
     qualityDropped: 'Quality lowered to',
+
+    // ---- wave 11: controls and screen
+
+    // ---- wave 12: economy
+
+    // ---- wave 13: weapons and grenades
+
   },
 };
 

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { t, setLang, getLang, QUALITY_ORDER } from '../config.js';
 
+// Screens are full-window panels; one is shown at a time. Other modules add theirs with addScreen().
 const SCREENS = ['loading', 'menu', 'pause', 'settings', 'controls', 'dead', 'victory'];
 
 function el(tag, cls, html) {
@@ -30,12 +31,14 @@ export class HUD {
   build() {
     const r = this.root;
     r.innerHTML = '';
+    this.screens = [...SCREENS];
 
     // ------------------------------------------------------------------ hud
     this.hud = el('div', 'hud hidden');
     this.hud.innerHTML = `
       <div class="wavebox"><div class="wave-title" id="h-wave"></div><div class="wave-sub" id="h-left"></div><div class="wave-break" id="h-break"></div></div>
-      <div class="scorebox"><div class="score-label" data-t="score"></div><div class="score-val" id="h-score">0</div><div class="fps" id="h-fps"></div></div>
+      <div class="scorebox"><div class="score-label" data-t="score"></div><div class="score-val" id="h-score">0</div><div class="money hidden" id="h-money"></div><div class="fps" id="h-fps"></div></div>
+      <div class="scope hidden" id="h-scope"></div>
       <div class="killfeed" id="h-feed"></div>
       <canvas class="radar" id="h-radar" width="300" height="300"></canvas>
       <div class="crosshair" id="h-xh"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
@@ -45,10 +48,14 @@ export class HUD {
       <div class="banner" id="h-banner"><div class="banner-t" id="h-banner-t"></div><div class="banner-s" id="h-banner-s"></div></div>
       <div class="toast" id="h-toast"></div>
       <div class="status">
-        <div class="health"><div class="health-label" data-t="health"></div><div class="health-row"><div class="health-bar"><div class="health-fill" id="h-hfill"></div></div><div class="health-num" id="h-hnum">100</div></div></div>
+        <div class="health">
+          <div class="stamina hidden" id="h-stam"><div class="stamina-fill" id="h-sfill"></div></div>
+          <div class="armor hidden" id="h-armor"><div class="armor-fill" id="h-afill"></div></div>
+          <div class="health-label" data-t="health"></div><div class="health-row"><div class="health-bar"><div class="health-fill" id="h-hfill"></div></div><div class="health-num" id="h-hnum">100</div></div></div>
         <div class="ammo"><div class="ammo-name" id="h-wname"></div><div class="ammo-row"><span class="ammo-mag" id="h-mag">30</span><span class="ammo-res" id="h-res">/ 150</span></div>
           <div class="reload" id="h-reload"><div class="reload-bar"><div class="reload-fill" id="h-rfill"></div></div><div class="reload-txt" data-t="reload"></div></div>
-          <div class="ammo-warn" id="h-awarn"></div></div>
+          <div class="ammo-warn" id="h-awarn"></div>
+          <div class="grenades hidden" id="h-gren"></div></div>
       </div>`;
     r.appendChild(this.hud);
 
@@ -209,8 +216,21 @@ export class HUD {
   openSettings(from) { this.backTo = from; this.syncSettings(); this.showScreen('settings'); }
   openControls(from) { this.backTo = from; this.showScreen('controls'); }
 
+  /**
+   * Add a screen built elsewhere (shop, inventory, key bindings, big map). `html` is the inside of
+   * the screen, usually one .panel. Returns the screen element (id 'screen-' + name).
+   */
+  addScreen(name, html, cls = '') {
+    const s = el('div', 'screen hidden ' + cls, html);
+    s.id = 'screen-' + name;
+    this.root.appendChild(s);
+    if (!this.screens.includes(name)) this.screens.push(name);
+    s.querySelectorAll('[data-t]').forEach((n) => { n.textContent = t(n.dataset.t); });
+    return s;
+  }
+
   showScreen(name) {
-    for (const s of SCREENS) {
+    for (const s of this.screens) {
       const n = document.getElementById('screen-' + s);
       if (n) n.classList.toggle('hidden', s !== name);
     }
@@ -365,8 +385,20 @@ export class HUD {
     this.set('h-left', t('enemiesLeft') + ': ' + g.director.remaining());
     this.set('h-score', String(g.director.stats.score));
 
+    this.updateStamina(dt);
+    this.updateEconomy(dt);
+    this.updateWeaponExtras(dt, w);
     this.drawRadar();
   }
+
+  // ---- wave 11: the sprint bar above the health bar (#h-stam, #h-sfill)
+  updateStamina(dt) {}
+
+  // ---- wave 12: money (#h-money) and armour (#h-armor, #h-afill)
+  updateEconomy(dt) {}
+
+  // ---- wave 13: grenades (#h-gren) and the sniper scope (#h-scope). w is weapons.hudInfo()
+  updateWeaponExtras(dt, w) {}
 
   drawRadar() {
     const g = this.game, ctx = this.radarCtx, S = 300, C = S / 2, R = C - 6;

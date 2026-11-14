@@ -16,7 +16,7 @@ const { project, requirements, epics, stories, gates } = data;
 const RANK = { done: 0, partial: 1, placeholder: 2, deferred: 3 };
 const LABEL = { done: 'сделано', partial: 'частично', placeholder: 'заглушка', deferred: 'отложено' };
 const VERIFIED = { tests: 'тесты', browser: 'браузер', static: 'разбор файла', review: 'независимая проверка', code: 'только код', pending: 'не проверено' };
-const KIND = { brief: 'бриф', followup: 'уточнение', implied: 'подразумевается' };
+const KIND = { brief: 'бриф', followup: 'уточнение', implied: 'подразумевается', request: 'запрос', proposal: 'предложение' };
 
 // ---------------------------------------------------------------- derive
 const byReq = new Map(requirements.map((r) => [r.id, []]));

@@ -16,7 +16,7 @@ function hold(a, startMs, ms, auto = true) {
 }
 
 test('a new arsenal has every weapon full and the rifle in hand', () => {
-  const a = createArsenal();
+  const a = createArsenal('rifle', ['pistol', 'rifle', 'shotgun']);
   assert.equal(a.current, 'rifle');
   assert.deepEqual(a.weapons.pistol, { mag: 12, reserve: 60 });
   assert.deepEqual(a.weapons.rifle, { mag: 30, reserve: 180 });

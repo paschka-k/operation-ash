@@ -25,6 +25,9 @@ export const PLAYER = {
 };
 PLAYER.jump = Math.sqrt(2 * PLAYER.gravity * PLAYER.jumpHeight);
 
+// ---- wave 11: sprint stamina
+
+
 /** Health after regeneration. */
 export function regenHealth(health, max, sinceDamage, dt) {
   if (health >= max || sinceDamage < PLAYER.regenDelay) return health;
@@ -40,35 +43,51 @@ export function moveSpeed({ crouched, sprinting, ads, backwards }) {
 }
 
 // ----------------------------------------------------------------- weapons
+/** Every weapon in the game, in slot order: slot N is WEAPON_ORDER[N - 1]. */
 export const WEAPON_ORDER = ['pistol', 'rifle', 'shotgun'];
+
+/** What a new game starts with. The rest is bought in the shop between waves. */
+export const START_WEAPONS = ['pistol', 'rifle', 'shotgun'];
 
 /**
  * One row per weapon. Angles are degrees, times are milliseconds.
  * spreadBase..spreadMax is the cone half angle at rest, spreadPerShot is how
  * much each shot widens it. recoil is the camera kick per shot (x up, y sideways).
+ * price is in money (the shop's currency); 0 means the weapon is never sold.
  */
 export const WEAPON_SPECS = {
   pistol: {
-    id: 'pistol', nameKey: 'w_pistol', damage: 34, pellets: 1, rpm: 300, auto: false, mag: 12, reserve: 60,
+    id: 'pistol', nameKey: 'w_pistol', price: 0, damage: 34, pellets: 1, rpm: 300, auto: false, mag: 12, reserve: 60,
     reloadMs: 1600, perShell: false, spreadBase: 0.4, spreadMax: 1.6, spreadPerShot: 0.35,
     recoil: { x: 1.4, y: 0.5 }, adsSpreadMul: 0.33, switchMs: 300,
     falloff: { full: 22, zero: 65, min: 0.45 }, headMult: 2.5, legMult: 0.75,
     zoom: 0.84, adsMs: 130, noise: 36, tracerEvery: 1, sound: 'pistol',
   },
   rifle: {
-    id: 'rifle', nameKey: 'w_rifle', damage: 22, pellets: 1, rpm: 700, auto: true, mag: 30, reserve: 180,
+    id: 'rifle', nameKey: 'w_rifle', price: 0, damage: 22, pellets: 1, rpm: 700, auto: true, mag: 30, reserve: 180,
     reloadMs: 2300, perShell: false, spreadBase: 0.4, spreadMax: 3.5, spreadPerShot: 0.22,
     recoil: { x: 0.9, y: 0.35 }, adsSpreadMul: 0.4, switchMs: 380,
     falloff: { full: 28, zero: 90, min: 0.6 }, headMult: 2.5, legMult: 0.75,
     zoom: 0.7, adsMs: 200, noise: 46, tracerEvery: 2, sound: 'rifle',
   },
   shotgun: {
-    id: 'shotgun', nameKey: 'w_shotgun', damage: 13, pellets: 8, rpm: 75, auto: false, mag: 6, reserve: 36,
+    id: 'shotgun', nameKey: 'w_shotgun', price: 1500, damage: 13, pellets: 8, rpm: 75, auto: false, mag: 6, reserve: 36,
     reloadMs: 2800, perShell: true, spreadBase: 4.5, spreadMax: 6.0, spreadPerShot: 0.6,
     recoil: { x: 3.2, y: 1.1 }, adsSpreadMul: 0.6, switchMs: 420,
     falloff: { full: 8, zero: 26, min: 0 }, headMult: 2.5, legMult: 0.75,
     zoom: 0.9, adsMs: 220, noise: 52, tracerEvery: 3, sound: 'shotgun',
   },
+  // ---- wave 13: new weapons (rows here, ids appended to WEAPON_ORDER)
+
+};
+
+/** Hand grenades. Wave 13 adds how they fly and explode; the counts and the price are shared. */
+export const GRENADE = {
+  start: 2,            // carried at the start of a game
+  max: 4,              // carrying limit
+  price: 300,          // one grenade in the shop
+  // ---- wave 13: grenade flight and explosion
+
 };
 
 /** Seconds between shots. */
@@ -226,3 +245,7 @@ export function waveComposition(n) {
 export function killScore({ base, head = false, streak = 1, source = 'player' }) {
   return base + (head ? 50 : 0) + Math.min(Math.max(streak - 1, 0), 10) * 10 + (source === 'barrel' ? 50 : 0);
 }
+
+// ---- wave 12: economy (money, stage reward, shop, upgrades, armour, enemy health growth)
+
+

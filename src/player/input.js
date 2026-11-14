@@ -1,33 +1,36 @@
-// Keyboard, mouse and pointer lock. Edge triggered keys are consumed once.
+// Keyboard, mouse and pointer lock, read as actions.
+//
+// The game asks for actions ('forward', 'fire', 'reload', ...), never for keys. Each action has a
+// list of physical codes in settings.bindings (see ACTIONS and DEFAULT_BINDINGS in config.js).
+// Mouse buttons are codes too: Mouse0 left, Mouse1 middle, Mouse2 right. Other sources (tests,
+// a gamepad) hold actions directly with setVirtual(). Edge triggered presses are consumed once.
 
-const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'ControlLeft',
-  'KeyR', 'KeyQ', 'Digit1', 'Digit2', 'Digit3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab',
-]);
+import { ACTIONS, mergeBindings } from '../config.js';
+
+// keys whose browser default must not fire during play even when nothing is bound to them
+const ALWAYS_GAME_KEYS = ['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 
 export class Input {
   constructor(canvas, game) {
     this.canvas = canvas;
     this.game = game;
-    this.down = new Set();
-    this.edge = new Set();
+    this.down = new Set();        // physical codes held
+    this.edge = new Set();        // physical codes pressed since they were last consumed
+    this.lastPress = new Map();   // code -> time of the last press (jump buffering)
+    this.virtual = new Set();     // actions held by a non-keyboard source
+    this.vEdge = new Set();       // actions pressed by such a source, not yet consumed
+    this.vPress = new Map();      // action -> time of its last virtual press
     this.mouseDX = 0;
     this.mouseDY = 0;
-    this.left = false;
-    this.right = false;
     this.wheel = 0;
     this.locked = false;
-    this.lastPress = new Map();
     this._listeners = [];
+    this.setBindings(game.settings.bindings);
 
     this._on(window, 'keydown', (e) => {
       if (e.repeat) return;
-      if (GAME_KEYS.has(e.code) && this.game.state === 'playing') e.preventDefault();
-      if (!this.down.has(e.code)) {
-        this.edge.add(e.code);
-        this.lastPress.set(e.code, performance.now());
-      }
-      this.down.add(e.code);
+      if (this.gameKeys.has(e.code) && this.game.state === 'playing') e.preventDefault();
+      this._press(e.code);
     });
     this._on(window, 'keyup', (e) => { this.down.delete(e.code); });
     this._on(window, 'blur', () => this.releaseAll());
@@ -39,13 +42,9 @@ export class Input {
     });
     this._on(canvas, 'mousedown', (e) => {
       if (!this.locked) return;
-      if (e.button === 0) this.left = true;
-      if (e.button === 2) this.right = true;
+      this._press('Mouse' + e.button);
     });
-    this._on(window, 'mouseup', (e) => {
-      if (e.button === 0) this.left = false;
-      if (e.button === 2) this.right = false;
-    });
+    this._on(window, 'mouseup', (e) => { this.down.delete('Mouse' + e.button); });
     this._on(canvas, 'contextmenu', (e) => e.preventDefault());
     this._on(canvas, 'wheel', (e) => {
       if (!this.locked) return;
@@ -65,6 +64,67 @@ export class Input {
     target.addEventListener(type, fn, opts);
     this._listeners.push([target, type, fn, opts]);
   }
+
+  _press(code) {
+    if (!this.down.has(code)) {
+      this.edge.add(code);
+      this.lastPress.set(code, performance.now());
+    }
+    this.down.add(code);
+  }
+
+  /** Use a new set of bindings (after the player changed them). Missing actions get their defaults. */
+  setBindings(bindings) {
+    this.bindings = mergeBindings(bindings);
+    this.gameKeys = new Set(ALWAYS_GAME_KEYS);
+    for (const a of ACTIONS) for (const c of this.bindings[a]) if (!c.startsWith('Mouse')) this.gameKeys.add(c);
+  }
+
+  // ---------------------------------------------------------------- actions
+  /** Is the action held right now? */
+  action(name) {
+    if (this.virtual.has(name)) return true;
+    const codes = this.bindings[name];
+    if (codes) for (const c of codes) if (this.down.has(c)) return true;
+    return false;
+  }
+
+  /** True once per press of the action. */
+  actionPressed(name) {
+    let hit = false;
+    if (this.vEdge.has(name)) { this.vEdge.delete(name); hit = true; }
+    const codes = this.bindings[name];
+    if (codes) for (const c of codes) if (this.edge.has(c)) { this.edge.delete(c); hit = true; }
+    return hit;
+  }
+
+  /** True if the action was pressed within the last `ms` milliseconds (jump buffering). */
+  actionRecent(name, ms) {
+    const now = performance.now();
+    const v = this.vPress.get(name);
+    if (v !== undefined && now - v < ms) return true;
+    const codes = this.bindings[name];
+    if (codes) for (const c of codes) { const t = this.lastPress.get(c); if (t !== undefined && now - t < ms) return true; }
+    return false;
+  }
+
+  clearActionRecent(name) {
+    this.vPress.delete(name);
+    const codes = this.bindings[name];
+    if (codes) for (const c of codes) this.lastPress.delete(c);
+  }
+
+  /** Hold or release an action from a source other than the keyboard and mouse (gamepad, tests). */
+  setVirtual(name, down) {
+    if (down) {
+      if (!this.virtual.has(name)) { this.vEdge.add(name); this.vPress.set(name, performance.now()); }
+      this.virtual.add(name);
+    } else this.virtual.delete(name);
+  }
+
+  // the trigger and the aim button, kept as fields because many places read them
+  get left() { return this.action('fire'); }
+  get right() { return this.action('aim'); }
 
   // names of the input contract
   get state() { return this; }
@@ -106,24 +166,18 @@ export class Input {
   releaseAll() {
     this.down.clear();
     this.edge.clear();
-    this.left = this.right = false;
+    this.virtual.clear();
+    this.vEdge.clear();
   }
 
+  // raw codes: kept for global keys (F3, Esc) and for the key binding screen
   isDown(code) { return this.down.has(code); }
 
-  /** True once per key press. */
+  /** True once per press of a physical key. */
   pressed(code) {
     if (this.edge.has(code)) { this.edge.delete(code); return true; }
     return false;
   }
-
-  /** True if the key went down within the last `ms` milliseconds (jump buffering). */
-  recent(code, ms) {
-    const t = this.lastPress.get(code);
-    return t !== undefined && performance.now() - t < ms;
-  }
-
-  clearRecent(code) { this.lastPress.delete(code); }
 
   takeMouse() {
     const dx = this.mouseDX, dy = this.mouseDY;
@@ -133,18 +187,23 @@ export class Input {
 
   takeWheel() { const w = this.wheel; this.wheel = 0; return w; }
 
-  /** Used by automated tests to inject input without a real device. */
-  inject({ keys, left, right, dx, dy } = {}) {
+  /**
+   * Used by automated tests to inject input without a real device.
+   * keys: {code: bool} physical keys; actions: {name: bool}; left/right: the fire and aim actions.
+   */
+  inject({ keys, actions, left, right, dx, dy, wheel } = {}) {
     if (keys) {
       for (const k of Object.keys(keys)) {
-        if (keys[k]) { if (!this.down.has(k)) { this.edge.add(k); this.lastPress.set(k, performance.now()); } this.down.add(k); }
+        if (keys[k]) this._press(k);
         else this.down.delete(k);
       }
     }
-    if (left !== undefined) this.left = left;
-    if (right !== undefined) this.right = right;
+    if (actions) for (const a of Object.keys(actions)) this.setVirtual(a, !!actions[a]);
+    if (left !== undefined) this.setVirtual('fire', !!left);
+    if (right !== undefined) this.setVirtual('aim', !!right);
     if (dx) this.mouseDX += dx;
     if (dy) this.mouseDY += dy;
+    if (wheel) this.wheel += wheel;
   }
 }
 

@@ -154,3 +154,12 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .mini-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 22px; margin-top: 10px; font-size: 13px; letter-spacing: 0.04em; }
 .mini-ctl div { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 2px 0; color: var(--muted); }
 .mini-ctl b { color: var(--accent-2); font-weight: 600; }
+
+/* ---- wave 11: controls and screen (sprint bar #h-stam, radar, big map, key bindings, gamepad focus) */
+
+
+/* ---- wave 12: economy (money #h-money, armour #h-armor, shop, inventory) */
+
+
+/* ---- wave 13: weapons (grenades #h-gren, sniper scope #h-scope) */
+
