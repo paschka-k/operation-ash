@@ -1,7 +1,8 @@
 // core/ride: a rider's vehicle on its loop. Pure: no three.js, time comes in as dt (s) and now (ms).
 //
 //   const ride = createRide(route, s, 'moto', rng);   // on loop `route` (core/routes buildRoute) at s metres
-//   stepRide(ride, dt, blockers)   -> {dismount}       // drive on; brake for whatever stands in the lane
+//   stepRide(ride, dt, blockers)   -> {dismount}       // drive on; brake for whatever stands in the lane,
+//                                                      // a motorbike goes for the player instead
 //   rideRam(ride, player, now)     -> null | {damage, pushX, pushZ}
 //   rideAim(ride, e, view, now, rng) -> {fire: {dist, acc} | null, laser, cue}   // the rider's gun
 //   crashRide(ride, dir)                                // shot out or rider killed: it slides and falls
@@ -13,7 +14,9 @@
 // Euler(0, heading, -lean, 'YXZ'); in a turn it leans towards the centre of the arc.
 // The vehicle follows the loop exactly: the loops are laid out clear of the level's colliders
 // (core/routes), so nothing here looks at the level. What can stand in the way is passed in as
-// blockers [{x, z, r}]: the player, other riders, wrecks, foot soldiers. The numbers are in rules.js
+// blockers [{x, z, r, player?}]: the player (flagged player), other riders, wrecks, foot soldiers. A
+// scooter or a skate stops for the player; a motorbike (a finite ramSpeed) runs him down and rides on
+// (stepRide, rideRam); everybody stops for everything else. The numbers are in rules.js
 // (VEHICLES for each kind, RIDE for how all of them drive).
 
 import { VEHICLES, RIDE } from './rules.js';
@@ -63,28 +66,51 @@ function curveLimit(ride, V, s) {
 }
 
 /**
- * Free road in front of the vehicle's nose, in metres along the loop, before the nearest blocker that
- * stands in its lane (Infinity when the lane is clear). Blockers behind it do not count.
+ * The road in front of the vehicle's nose, in metres along the loop: free, before the nearest blocker
+ * that stands in its lane, and prey, before its nose touches the player (both Infinity when there is
+ * none). The player counts as prey only for a vehicle that rams (a finite ramSpeed, the motorbikes):
+ * every other blocker, and the player for the others, is free road's end. Blockers behind it do not
+ * count. prey is below zero when the player already stands inside the vehicle's length.
  */
-function freeRoad(ride, V, blockers) {
-  const route = ride.route, L = route.length, half = V.length / 2;
-  let free = Infinity;
+function scanRoad(ride, V, blockers, out) {
+  const route = ride.route, L = route.length, half = V.length / 2, rams = Number.isFinite(V.ramSpeed);
+  out.free = Infinity;
+  out.prey = Infinity;
   for (const b of blockers) {
     const r = b.r || 0;
     const n = route.nearest(b.x, b.z);
     if (n.dist > V.width / 2 + r + RIDE.lane) continue;
     const ahead = wrap(n.s - ride.s, L);
     if (ahead > L / 2) continue;
+    if (rams && b.player) { out.prey = Math.min(out.prey, ahead - half - r); continue; }
     const gap = ahead - half - r - RIDE.gap;
-    if (gap < free) free = Math.max(0, gap);
+    if (gap < out.free) out.free = Math.max(0, gap);
   }
-  return free;
+  return out;
 }
+
+/**
+ * Can the vehicle still touch its prey at ramSpeed: speeding up all the way to him and still able to
+ * stop for whatever stands in the lane beyond him? A motorbike that cannot (it stands, or crawls, right
+ * behind him) brakes for him like for anyone, and does not drive through him.
+ */
+function canRam(ride, V, road) {
+  const d = Math.max(0, road.prey);
+  const v = Math.min(Math.sqrt(ride.speed * ride.speed + 2 * V.accel * d), Math.sqrt(2 * V.brake * Math.max(0, road.free - d)));
+  return v >= V.ramSpeed;
+}
+
+const _road = { free: Infinity, prey: Infinity };
 
 /**
  * Drive for dt seconds: cruise at the vehicle's speed, slower before turns, brake for blockers in the
  * lane and never run into one. The move is cut into substeps of at most RIDE.substep metres. A ride held
  * still by a blocker counts blockedT up; after RIDE.dismountSecs the rider should get off.
+ * blockers [{x, z, r, player?}]: the one flagged player is the player. A vehicle that rams (a finite
+ * ramSpeed, the motorbikes) does not brake for him: it goes for him, at least at ramSpeed once he is
+ * within its braking reach and even in a turn, runs him down (rideRam) and rides on; only when it is too
+ * slow and too close to reach ramSpeed before it touches him does it stop for him as for anyone. A
+ * scooter or a skate stops for him; everybody stops for every other blocker.
  * A wreck (crashRide) slides on instead. Returns {dismount}.
  */
 export function stepRide(ride, dt, blockers = []) {
@@ -92,13 +118,18 @@ export function stepRide(ride, dt, blockers = []) {
   ride.impact = 0;
   if (ride.wrecked) { slide(ride, V, dt); return { dismount: false }; }
   if (!ride.mounted) return { dismount: false };    // left standing by its rider (leaveRide)
-  const free = freeRoad(ride, V, blockers);
+  const road = scanRoad(ride, V, blockers, _road);
+  const charge = road.prey < Infinity && canRam(ride, V, road);
+  const free = charge ? road.free : Math.min(road.free, Math.max(0, road.prey - RIDE.gap));
+  const reach = (V.speed * V.speed) / (2 * V.brake) + 1;
   let moved = 0;
   const n = Math.max(1, Math.ceil(((Math.max(ride.speed, V.speed) + V.accel * dt) * dt) / RIDE.substep));
   const h = dt / n;
   for (let i = 0; i < n; i++) {
     const room = free - moved;
-    const target = Math.min(V.speed, curveLimit(ride, V, ride.s), Math.sqrt(2 * V.brake * Math.max(0, room)));
+    let target = Math.min(V.speed, curveLimit(ride, V, ride.s));
+    if (charge && road.prey - moved <= reach) target = Math.max(target, V.ramSpeed);
+    target = Math.min(target, Math.sqrt(2 * V.brake * Math.max(0, room)));
     ride.speed = ride.speed < target ? Math.min(target, ride.speed + V.accel * h) : Math.max(target, ride.speed - V.brake * h);
     let step = ride.speed * h;
     if (step >= room) {

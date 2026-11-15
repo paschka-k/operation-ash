@@ -32,6 +32,9 @@ Rebuild the single file with `npm run build`.
 | Mouse, right button | aim down sights |
 | R | reload |
 | 1 2 3, mouse wheel, Q | pistol, rifle, shotgun; next; last used |
+| G (gamepad RB) | grenade |
+| I | inventory |
+| M | big map |
 | Esc | pause and resume |
 | F3 | FPS counter |
 
@@ -104,4 +107,4 @@ tests/tools   packer tests, run with npm run test:tools
 .autopilot    manifest, spec, interfaces, dashboard, progress
 ```
 
-`npm run dashboard` checks the process gates and regenerates `.autopilot/dashboard.html`.
+`npm run dashboard` checks the process gates and regenerates `.autopilot/overview.html`.

@@ -167,12 +167,12 @@ test('newRiderKinds: each kind of rider is announced the first time a wave bring
     for (const k of kinds) seen.add(k.kind);
     if (kinds.length) got[n] = kinds;
   }
-  assert.deepEqual(Object.keys(got).map(Number), [3, 5]);
-  assert.deepEqual(got[3].map((k) => k.kind), ['scooterRider']);
+  // one new kind a wave, in the order of the brief: scooters (3), skates (4), motorbikes (5)
+  assert.deepEqual(Object.keys(got).map(Number), [3, 4, 5]);
+  assert.deepEqual(got[3].map((k) => [k.kind, k.guard]), [['scooterRider', false]]);
+  assert.deepEqual(got[4].map((k) => [k.kind, k.guard]), [['skater', false]]);
   // the gang leader's guard brings the bikers two waves before their own wave 7
-  assert.deepEqual(got[5].map((k) => k.kind).sort(), ['biker', 'skater']);
-  assert.equal(got[5].find((k) => k.kind === 'biker').guard, true);
-  assert.equal(got[5].find((k) => k.kind === 'skater').guard, false);
+  assert.deepEqual(got[5].map((k) => [k.kind, k.guard]), [['biker', true]]);
   assert.deepEqual(newRiderKinds(waveRoster(12, true), seen), [], 'the endless mode brings nothing new');
   // a game where no gang leader came first still announces the bikers in their own wave
   const fresh = new Set(['scooterRider', 'skater']);

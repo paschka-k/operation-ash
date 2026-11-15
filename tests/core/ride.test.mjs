@@ -169,6 +169,88 @@ test('rideRam: hitting the player at speed counts even though the bike stops at 
   assert.ok(hit && hit.damage === VEHICLES.moto.ramDamage, 'too close to brake: rammed');
 });
 
+/**
+ * A vehicle of `kind` at sStart drives at a player standing still on the loop at sPlayer (the blocker
+ * the game passes for him, flagged player), for `secs` seconds, checking for a ram every frame.
+ * Returns {ride, hits: [{t, speed, damage}], maxFront, dismountAt}.
+ */
+function driveAtPlayer(route, kind, sStart, sPlayer, secs, seed = 31) {
+  const r = createRide(route, sStart, kind, createRng(seed));
+  const at = route.sample(sPlayer);
+  const player = { x: at.x, z: at.z, r: 0.34, radius: 0.34, player: true };
+  const half = VEHICLES[kind].length / 2;
+  const hits = [];
+  let t = 0, maxFront = -Infinity, dismountAt = null;
+  while (t < secs) {
+    const res = stepRide(r, DT, [player]);
+    t += DT;
+    if (res.dismount && dismountAt === null) dismountAt = t;
+    const hit = rideRam(r, player, 10000 + t * 1000);
+    if (hit) hits.push({ t, speed: r.speed, damage: hit.damage });
+    if (!hits.length) maxFront = Math.max(maxFront, ((r.s - sStart + route.length) % route.length) + half);
+  }
+  return { ride: r, hits, maxFront, dismountAt };
+}
+
+test('stepRide: a motorbike does not brake for the player, it runs him down at ramSpeed and rides on; a scooter and a skate stop', () => {
+  const V = VEHICLES.moto;
+  const m = driveAtPlayer(BIG, 'moto', 0, 25, 10);
+  assert.equal(m.hits.length, 1, 'one ram, not two in a row: ' + m.hits.length);
+  assert.ok(m.hits[0].speed >= V.ramSpeed, 'rams at ' + m.hits[0].speed.toFixed(2) + ' m/s');
+  assert.equal(m.hits[0].damage, V.ramDamage);
+  assert.ok(m.hits[0].t < 25 / V.speed + 0.5, 'drove straight at him: ' + m.hits[0].t.toFixed(2) + ' s');
+  // then it rides on along its loop at its cruising speed, held up by nothing
+  near(m.ride.speed, V.speed, 1e-9);
+  assert.ok(m.ride.s > 25 + 40, 'rode on to ' + m.ride.s.toFixed(1));
+  assert.deepEqual([m.ride.mounted, m.ride.blockedT, m.dismountAt], [true, 0, null]);
+  for (const kind of ['scooter', 'skate']) {
+    const S = driveAtPlayer(BIG, kind, 0, 25, 10);
+    assert.equal(S.hits.length, 0, kind + ' never rams');
+    near(S.ride.speed, 0, 1e-9);
+    assert.ok(S.maxFront <= 25 - 0.34 + 1e-6, kind + ' stops in front of him: front at ' + S.maxFront.toFixed(3));
+    assert.ok(S.dismountAt !== null, kind + ': held up by the player, the rider gets off');
+  }
+  // a blocker that is not the player (a rider, a foot soldier, a wreck): the motorbike stops for it too
+  const r = createRide(BIG, 0, 'moto', createRng(31));
+  const at = BIG.sample(25), bot = { x: at.x, z: at.z, r: 0.34 };
+  let front = -Infinity;
+  for (let i = 0; i < 480; i++) { stepRide(r, DT, [bot]); front = Math.max(front, r.s + V.length / 2); }
+  near(r.speed, 0, 1e-9);
+  assert.ok(front <= 25 - 0.34 + 1e-6, 'front at ' + front.toFixed(3));
+});
+
+test('stepRide: on every loop of the level, turns included, a motorbike runs a standing player down at ramSpeed or faster', () => {
+  for (const def of ROUTES) {
+    const route = buildRoute(def);
+    for (const kind of ['moto', 'heavyMoto']) {
+      const V = VEHICLES[kind];
+      for (let sp = 0; sp < route.length; sp += 2.5) {
+        const res = driveAtPlayer(route, kind, sp - 30, sp, 10);
+        const where = def.id + ' ' + kind + ' player at s ' + sp.toFixed(1);
+        assert.ok(res.hits.length >= 1, where + ': no ram');
+        assert.ok(res.hits[0].speed >= V.ramSpeed, where + ': rammed at ' + res.hits[0].speed.toFixed(2) + ' m/s');
+        assert.equal(res.dismountAt, null, where + ': the rider got off');
+      }
+    }
+  }
+});
+
+test('stepRide: a motorbike too slow and too close to reach ramSpeed brakes for the player instead of driving through him', () => {
+  const r = createRide(BIG, 0, 'moto', createRng(32));
+  r.speed = 0;
+  const half = VEHICLES.moto.length / 2;
+  const at = BIG.sample(half + 0.34 + 0.6);                  // 0.6 m in front of its nose
+  const player = { x: at.x, z: at.z, r: 0.34, radius: 0.34, player: true };
+  let hit = null, front = -Infinity;
+  for (let i = 0; i < 120; i++) {
+    stepRide(r, DT, [player]);
+    hit = hit || rideRam(r, player, 1000 + i * 17);
+    front = Math.max(front, r.s + half);
+  }
+  assert.equal(hit, null, 'no ram below ramSpeed');
+  assert.ok(front <= half + 0.6 + 1e-6, 'it did not drive into him: front at ' + front.toFixed(3));
+});
+
 function rider(type, tier = 3) {
   const e = createEnemy({ x: 0, z: 0, type }, tier, createRng(11));
   return e;

@@ -61,21 +61,33 @@ test('riders and bosses are enemy types with all the fields of a soldier', () =>
   for (const k of ['grunt', 'rusher', 'heavy']) assert.equal(ENEMY_TYPES[k].vehicle, undefined);
 });
 
-test('riders come in order: scooters from wave 3, skates from 5, motorbikes from 7', () => {
-  assert.deepEqual(firstRiderWave, { scooterRider: 3, skater: 5, biker: 7 });
+test('riders come in order: scooters from wave 3, skates from 4, motorbikes from 7 (the leader\'s guard on 5)', () => {
+  assert.deepEqual(firstRiderWave, { scooterRider: 3, skater: 4, biker: 7 });
+  // the wave each kind of rider is first met in, over the ten waves of a game: one new kind a wave,
+  // the bikers first as the gang leader's guard
+  const first = {};
+  for (let n = 1; n <= 10; n++) {
+    const r = waveRoster(n, false);
+    for (const k of RIDERS) if (count(r, k) > 0 && !(k in first)) first[k] = n;
+  }
+  assert.deepEqual(first, { scooterRider: 3, skater: 4, biker: 5 });
   for (const n of [1, 2]) {
     const r = waveRoster(n, false);
     for (const k of [...RIDERS, ...BOSSES]) assert.equal(count(r, k), 0, k + ' in wave ' + n);
   }
-  for (const n of [3, 4]) {
-    const r = waveRoster(n, false);
-    assert.ok(count(r, 'scooterRider') >= 1, 'scooter in wave ' + n);
-    assert.equal(count(r, 'skater') + count(r, 'biker'), 0, 'wave ' + n);
-  }
+  const w3 = waveRoster(3, false);
+  assert.ok(count(w3, 'scooterRider') >= 1, 'scooter in wave 3');
+  assert.equal(count(w3, 'skater') + count(w3, 'biker'), 0, 'wave 3: scooters only');
+  const w4 = waveRoster(4, false);
+  assert.ok(count(w4, 'scooterRider') >= 1, 'scooter in wave 4');
+  assert.ok(count(w4, 'skater') >= 1, 'a skater in wave 4');
+  assert.equal(count(w4, 'biker'), 0, 'wave 4: no biker yet');
   const w5 = waveRoster(5, false);
   assert.ok(count(w5, 'skater') >= 1, 'a skater in wave 5');
+  assert.equal(count(w5, 'bossBiker'), 1, 'wave 5: the gang leader');
   assert.equal(count(w5, 'biker'), 2, 'wave 5: the two bikers are the boss guard');
   assert.equal(count(waveRoster(6, false), 'biker'), 0);
+  assert.ok(count(waveRoster(6, false), 'skater') >= 1, 'a skater in wave 6');
   for (let n = 7; n <= 10; n++) {
     const r = waveRoster(n, false);
     for (const k of RIDERS) assert.ok(count(r, k) >= 1, k + ' in wave ' + n);
@@ -164,10 +176,13 @@ test('a boss wave opens with the boss, the gang leader right with his two guards
   assert.ok(new Set([1, 2, 3, 4, 5, 6].map(rest)).size > 1, 'the rest of wave 5 is shuffled');
 });
 
-test('the waves spawn their roster: a scooter rider in wave 3, the boss and his guard in wave 5', () => {
+test('the waves spawn their roster: a scooter rider in wave 3, a skater in 4, the boss and his guard in wave 5', () => {
   const waves = spawnsUpTo(5);
   const types = (n) => waves[n].map((e) => e.enemyType);
   assert.ok(types(3).includes('scooterRider'));
+  assert.ok(!types(3).includes('skater'), 'no skater before wave 4');
+  assert.ok(types(4).includes('skater'), 'the skaters come in wave 4');
+  assert.ok(!types(4).includes('biker'), 'the bikers come after the skaters');
   assert.ok(types(5).includes('bossBiker'));
   assert.equal(types(5).filter((t) => t === 'biker').length, 2);
   for (let n = 1; n <= 5; n++) {

@@ -117,16 +117,21 @@ export class Riders {
   }
 
   /**
-   * What stands in the lane of `m`: the player, the other vehicles on its loop, wrecks and vehicles left
-   * standing, foot soldiers near it.
+   * What stands in the lane of `m`: the player (flagged: a motorbike goes for him instead of braking,
+   * core/ride stepRide), the other vehicles on its loop, wrecks and vehicles left standing, foot soldiers
+   * near it.
    */
   _blockersFor(m) {
     const B = this._blockers, pool = this._pool, ride = m.ride, g = this.game;
     let n = 0;
-    const add = (x, z, r) => { const b = pool[n] || (pool[n] = { x: 0, z: 0, r: 0 }); b.x = x; b.z = z; b.r = r; B[n++] = b; };
+    const add = (x, z, r, player = false) => {
+      const b = pool[n] || (pool[n] = { x: 0, z: 0, r: 0, player: false });
+      b.x = x; b.z = z; b.r = r; b.player = player;
+      B[n++] = b;
+    };
     const near = (x, z) => (x - ride.x) * (x - ride.x) + (z - ride.z) * (z - ride.z) < NEAR * NEAR;
     const p = g.player;
-    if (p.alive && p.pos.y < ride.y + 1.2) add(p.pos.x, p.pos.z, p.pos.radius);
+    if (p.alive && p.pos.y < ride.y + 1.2) add(p.pos.x, p.pos.z, p.pos.radius, true);
     for (const o of this.mounts) if (o !== m && o.ride.route === ride.route) add(o.ride.x, o.ride.z, o.V.length / 2);
     for (const w of this.wrecks) if (near(w.ride.x, w.ride.z)) add(w.ride.x, w.ride.z, w.V.length / 2);
     for (const o of this.enemies.cores) {

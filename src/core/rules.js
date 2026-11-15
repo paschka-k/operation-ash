@@ -516,7 +516,9 @@ export function absorbDamage(armor, amount) {
  * (scale of bossBiker).
  *
  * ramSpeed: from this speed a touch knocks the player down (Infinity: never), ramDamage once per
- * ramCooldown seconds. wreckSecs: a wreck lies in the street this long (or until the wave is cleared).
+ * ramCooldown seconds. A vehicle with a finite ramSpeed does not brake for the player in its lane: it
+ * goes for him at ramSpeed at least, runs him down and rides on (core/ride stepRide); the others stop
+ * for him. wreckSecs: a wreck lies in the street this long (or until the wave is cleared).
  * score: points and money for shooting the vehicle out from under its rider.
  */
 export const VEHICLES = {
@@ -576,8 +578,12 @@ export const BOSS = {
   throwTime: { base: 0.5, perMetre: 1 / 15, min: 0.8, max: 1.7 },
 };
 
-/** The first wave of each kind of rider. The endless mode has all of them. */
-export const firstRiderWave = { scooterRider: 3, skater: 5, biker: 7 };
+/**
+ * The first wave of each kind of rider, one new kind a wave in the order of the brief: scooters, skates,
+ * motorbikes. The bikers' own wave is 7, but the gang leader of wave 5 (bossForWave) brings two of them as
+ * his guard, so a game meets them there, right after the skaters of wave 4. The endless mode has all of them.
+ */
+export const firstRiderWave = { scooterRider: 3, skater: 4, biker: 7 };
 
 /**
  * How many riders a wave brings: a share of its bots, at least one once riders exist, at most max.
