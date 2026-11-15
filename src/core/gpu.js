@@ -6,10 +6,18 @@
 //
 // kind: 'discrete' | 'integrated' | 'software' | 'unknown'. hint: worth telling the player how to switch
 // the browser to the fast graphics card: integrated graphics (Intel, AMD Radeon Graphics without a model
-// number) and software rendering (Microsoft Basic Render Driver, SwiftShader, llvmpipe). Apple's chips
+// number, the Vega and R-series graphics of AMD's processors) and software rendering (Microsoft Basic Render Driver, SwiftShader, llvmpipe). Apple's chips
 // have nothing to switch to, an unknown or masked string tells nothing: no hint for either.
 
 const SOFTWARE = /swiftshader|llvmpipe|softpipe|basic render|software rasterizer/i;
+// AMD's built-in graphics whose names look like cards, looked at before DISCRETE: the Vega of the Ryzen
+// processors ("Radeon RX Vega 10 Graphics", "Radeon Vega 8 Graphics"; the Vega 56 and 64 cards have no
+// "Graphics") and the R-series of the A-series processors ("Radeon R7 Graphics"; the R7 and R9 cards
+// carry a model number instead).
+const BUILT_IN = [
+  /radeon\s*(rx\s*)?vega\s*([1-9]|1[01])\s*graphics/i,
+  /radeon\s*r\d\s*graphics/i,
+];
 const DISCRETE = [
   /nvidia|geforce|quadro|\brtx\b|\bgtx\b/i,
   /radeon.*\b(rx|pro|r[579]|vii)\b/i,               // AMD cards: RX 6800, Radeon Pro, R9 290, Radeon VII
@@ -47,6 +55,7 @@ export function gpuInfo(raw) {
   const text = String(raw ?? '');
   let kind = 'unknown';
   if (SOFTWARE.test(text)) kind = 'software';
+  else if (BUILT_IN.some((r) => r.test(name))) kind = 'integrated';
   else if (DISCRETE.some((r) => r.test(name))) kind = 'discrete';
   else if (INTEGRATED.some((r) => r.test(name))) kind = 'integrated';
   const hint = kind === 'software' || (kind === 'integrated' && !/\bapple\b/i.test(name));

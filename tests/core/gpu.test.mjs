@@ -37,3 +37,28 @@ test('gpuInfo: nothing known gives no hint', () => {
   assert.equal(gpuInfo('').name, '');
   assert.equal(gpuInfo('Mozilla').name, 'Mozilla');
 });
+
+test('gpuInfo: AMD APU graphics named like cards (Vega, R-series) are integrated, the cards stay discrete', () => {
+  const integrated = [
+    ['AMD Radeon RX Vega 10 Graphics', 'AMD Radeon RX Vega 10 Graphics'],
+    ['AMD Radeon R7 Graphics', 'AMD Radeon R7 Graphics'],
+    ['ANGLE (AMD, AMD Radeon(TM) RX Vega 10 Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'AMD Radeon RX Vega 10 Graphics'],
+    ['ANGLE (AMD, AMD Radeon R7 Graphics (0x00001313) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'AMD Radeon R7 Graphics'],
+    ['ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x00009A49) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Intel Iris Xe Graphics'],
+  ];
+  for (const [raw, name] of integrated) {
+    const g = gpuInfo(raw);
+    assert.deepEqual([g.name, g.kind, g.hint], [name, 'integrated', true], raw);
+  }
+  const discrete = [
+    'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Laptop GPU (0x00002820) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    'ANGLE (AMD, Radeon RX Vega (0x0000687F) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    'AMD Radeon RX Vega 64',
+    'AMD Radeon R7 200 Series',
+    'AMD Radeon R9 290',
+  ];
+  for (const raw of discrete) {
+    const g = gpuInfo(raw);
+    assert.deepEqual([g.kind, g.hint], ['discrete', false], raw);
+  }
+});

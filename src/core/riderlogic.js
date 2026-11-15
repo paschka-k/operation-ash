@@ -13,16 +13,11 @@
 // One spawn event of core/waves is one enemy core and exactly one enemyKilled: a rider shot off his
 // vehicle keeps his core and fights on foot, the vehicle pays its own score without a kill.
 
-import { ENEMY_TYPES, VEHICLES, maxRiders, enemyMarkerAlpha } from './rules.js';
+import { ENEMY_TYPES, VEHICLES, RIDER_SPAWN, RIDER_MARKER, maxRiders, enemyMarkerAlpha } from './rules.js';
 
-/**
- * Where riders enter. minDist: metres from the player at least; step: metres between the points of a loop
- * looked at; gap: metres along a loop kept from any vehicle already on it.
- */
-export const RIDER_SPAWN = { minDist: 25, step: 2, gap: 12 };
-
-/** A rider on his vehicle is loud: the maps show him at this opacity at least, whatever the radar setting. */
-export const RIDER_MARKER = { mounted: 0.85 };
+// Where riders enter and how loud a mounted rider shows on the maps: numbers of rules.js, re-exported here
+// for the code that brings riders into play.
+export { RIDER_SPAWN, RIDER_MARKER };
 
 /** A type that rides in on a vehicle (the scooter rider, the skater, the biker, the gang leader). */
 export const isRider = (type) => !!(ENEMY_TYPES[type] && ENEMY_TYPES[type].vehicle);
@@ -65,7 +60,7 @@ function loopDistance(a, b, L) {
 /**
  * A point where a rider enters: on one of `routes` (core/routes buildRoute), at least RIDER_SPAWN.minDist
  * from the player {x, z}, out of his sight (visible(x, z) -> bool, the game layer casts the ray) and at
- * least RIDER_SPAWN.gap metres along the loop from every vehicle already on it (occupied: [{route, s}]).
+ * least RIDER_SPAWN.gap metres along the loop from every vehicle or wreck already on it (occupied: [{route, s}]).
  * Every loop is looked at every RIDER_SPAWN.step metres (from a random start), so a short stretch out of
  * sight is never missed; the points are tried best first (about 38 m away, a little shuffled) and the
  * first one out of sight wins, so few rays are cast. Returns {route, s, x, z} or null.

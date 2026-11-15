@@ -5,12 +5,15 @@
 //   rideRam(ride, player, now)     -> null | {damage, pushX, pushZ}
 //   rideAim(ride, e, view, now, rng) -> {fire: {dist, acc} | null, laser, cue}   // the rider's gun
 //   crashRide(ride, dir)                                // shot out or rider killed: it slides and falls
+//   leaveRide(ride)                                     // the rider got off: it stands there, whole
 //
 // Ride = {route, s, kind, speed, x, y, z, heading, lean, curvature, blockedT, ramCdT, impact,
 //         alive, wrecked, mounted, phase}
+// lean > 0 tips the vehicle's top along (cos heading, -sin heading), as the view draws it with
+// Euler(0, heading, -lean, 'YXZ'); in a turn it leans towards the centre of the arc.
 // The vehicle follows the loop exactly: the loops are laid out clear of the level's colliders
 // (core/routes), so nothing here looks at the level. What can stand in the way is passed in as
-// blockers [{x, z, r}]: the player, other riders, foot soldiers. The numbers are in rules.js
+// blockers [{x, z, r}]: the player, other riders, wrecks, foot soldiers. The numbers are in rules.js
 // (VEHICLES for each kind, RIDE for how all of them drive).
 
 import { VEHICLES, RIDE } from './rules.js';
@@ -88,6 +91,7 @@ export function stepRide(ride, dt, blockers = []) {
   const V = VEHICLES[ride.kind], L = ride.route.length;
   ride.impact = 0;
   if (ride.wrecked) { slide(ride, V, dt); return { dismount: false }; }
+  if (!ride.mounted) return { dismount: false };    // left standing by its rider (leaveRide)
   const free = freeRoad(ride, V, blockers);
   let moved = 0;
   const n = Math.max(1, Math.ceil(((Math.max(ride.speed, V.speed) + V.accel * dt) * dt) / RIDE.substep));
@@ -107,7 +111,10 @@ export function stepRide(ride, dt, blockers = []) {
     moved += step;
   }
   place(ride);
-  ride.lean = clamp(Math.atan((ride.speed * ride.speed * ride.curvature) / 9.81), -RIDE.maxLean, RIDE.maxLean);
+  // Into the turn. The view turns the vehicle by Euler(0, heading, -lean, 'YXZ'), so its top tips along
+  // lean × (cos h, -sin h); a positive curvature (core/routes) turns from +x towards +z, which lowers the
+  // heading, and puts the centre of the arc on the other side, along -(cos h, -sin h): hence the minus.
+  ride.lean = clamp(Math.atan((-ride.speed * ride.speed * ride.curvature) / 9.81), -RIDE.maxLean, RIDE.maxLean);
   const held = free - moved < 0.5 && ride.speed < RIDE.stuckSpeed;
   ride.blockedT = held ? ride.blockedT + dt : 0;
   return { dismount: ride.blockedT >= RIDE.dismountSecs };
@@ -132,7 +139,8 @@ function slide(ride, V, dt) {
 /**
  * The vehicle is shot out or its rider is killed on the move: from now on it is a wreck that slides on
  * along its lane with friction and falls onto its side. dir {x, z} is where the hit came from (it falls
- * that way); without it, it falls the way it leans. Calling it again changes nothing.
+ * that way); without it, it falls the way it leans, to the inside of its turn. Calling it again changes
+ * nothing.
  */
 export function crashRide(ride, dir = null) {
   if (ride.wrecked) return ride;
@@ -144,6 +152,19 @@ export function crashRide(ride, dir = null) {
   ride.impact = 0;
   const side = dir ? dir.x * Math.cos(ride.heading) - dir.z * Math.sin(ride.heading) : ride.lean;
   ride.fallSide = side < 0 ? -1 : 1;
+  return ride;
+}
+
+/**
+ * The rider gets off (held up by a blocker for RIDE.dismountSecs): the vehicle is not a wreck, it stays
+ * whole and stands upright where it stopped, for stepRide from now on as well. It never rams.
+ */
+export function leaveRide(ride) {
+  ride.mounted = false;
+  ride.speed = 0;
+  ride.lean = 0;
+  ride.blockedT = 0;
+  ride.impact = 0;
   return ride;
 }
 
@@ -205,7 +226,7 @@ export function rideAim(ride, e, view, now, rng = Math.random) {
   }
   e.seenTime += dt;
   e.lastSeen = { x: view.x, z: view.z };
-  if (e.mag <= 0) { a.phase = 'reload'; a.until = now + 1800; return out; }
+  if (e.mag <= 0) { a.phase = 'reload'; a.until = now + RIDE.reloadSecs * 1000; return out; }
   const warn = () => { a.phase = 'tele'; a.until = now + P.telegraph * 1000; out.cue = true; out.laser = 1; };
   switch (a.phase) {
     case 'idle':

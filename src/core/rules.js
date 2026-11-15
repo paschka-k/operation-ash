@@ -553,10 +553,15 @@ export const VEHICLES = {
  *   fallSecs      a wreck lies on its side after this long
  *   aimCone       radians either side of the heading a rider can shoot to
  *   maxLean       radians a vehicle leans into a turn, at most
+ *   reloadSecs    seconds a rider takes to reload on the move
+ *   dismountReact seconds before a rider who just got onto his feet reacts: thrown off a vehicle shot out
+ *                 from under him, or stepping off one held up by a blocker
+ *   thrownFlinch  seconds a rider thrown off his vehicle staggers
  */
 export const RIDE = {
   grip: 5, substep: 0.25, gap: 0.1, lane: 0.15, stuckSpeed: 0.5, dismountSecs: 3, touch: 0.15,
   knockShare: 0.7, knockMax: 9, crashFriction: 6, crashDrift: 0.4, fallSecs: 0.6, aimCone: 1.9, maxLean: 0.55,
+  reloadSecs: 1.8, dismountReact: { thrown: 0.7, held: 0.3 }, thrownFlinch: 0.5,
 };
 
 /**
@@ -580,6 +585,16 @@ export const firstRiderWave = { scooterRider: 3, skater: 5, biker: 7 };
  * waveCount(n): they take the places of grunts and of a heavy.
  */
 export const RIDER_RULES = { share: 0.2, max: 6, guards: 2 };
+
+/**
+ * Where riders enter (core/riderlogic pickRiderSpawn). minDist: metres from the player at least; step:
+ * metres between the points of a loop looked at; gap: metres along a loop kept from any vehicle or wreck
+ * already on it.
+ */
+export const RIDER_SPAWN = { minDist: 25, step: 2, gap: 12 };
+
+/** A rider on his vehicle is loud: the maps show him at this opacity at least (see MAP_MARKERS). */
+export const RIDER_MARKER = { mounted: 0.85 };
 
 /** The boss of wave n, or null: every fifth wave, the gang leader and the commander in turn. */
 export function bossForWave(n) {

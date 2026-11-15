@@ -14,14 +14,16 @@
 //
 // A vehicle shot out (hp <= 0) crashes and its rider gets up on the spot and fights on foot with the
 // health he has left: the same core, so no kill is counted; the vehicle pays its own score (director).
-// A rider held up by a blocker for RIDE.dismountSecs leaves his vehicle lying and fights on foot.
-// Wrecks have no collider and are not in anyone's way; they go away after wreckSecs or at the wave's end.
+// A rider held up by a blocker for RIDE.dismountSecs steps off and fights on foot; his vehicle stays
+// standing where it stopped, whole, without a crash. Wrecks and vehicles left standing have no collider
+// and stop nobody on foot, but they are in the riders' way like any blocker and no rider enters on top of
+// one; they go away after wreckSecs or at the wave's end.
 
-import { createRide, stepRide, rideRam, rideAim, crashRide } from '../core/ride.js';
+import { createRide, stepRide, rideRam, rideAim, crashRide, leaveRide } from '../core/ride.js';
 import { levelRoutes } from '../core/routes.js';
-import { VEHICLES } from '../core/rules.js';
+import { VEHICLES, RIDE } from '../core/rules.js';
 import { applyDamage } from '../core/combat.js';
-import { lineOfSight, standingHeight } from '../core/collision.js';
+import { lineOfSight, standingHeight, raycast } from '../core/collision.js';
 import { vehicleHp } from '../core/riderlogic.js';
 import { createVehicles } from './vehicles.js';
 import { setRidePose } from './soldier.js';
@@ -57,9 +59,10 @@ export class Riders {
     this.vehicles = createVehicles(game);
     this.routes = levelRoutes();
     this.mounts = [];            // {enemy, core, kind, V, ride, target, view, handle, voice, sees}
-    this.wrecks = [];            // {ride, handle, kind, V, t}
+    this.wrecks = [];            // {ride, handle, kind, V, t}: wrecks, and vehicles their riders left standing
     this._blockers = [];
     this._pool = [];
+    this._probe = {};
   }
 
   /** Riders on their vehicles right now. */
@@ -68,8 +71,11 @@ export class Riders {
   /** The living vehicles, targets of kind 'vehicle' for core/combat. */
   targets() { return this.mounts.map((m) => m.target); }
 
-  /** Where the vehicles on the loops are, for pickRiderSpawn. */
-  occupied() { return this.mounts.map((m) => ({ route: m.ride.route, s: m.ride.s })); }
+  /** Where the vehicles and the wrecks on the loops are, for pickRiderSpawn. */
+  occupied() {
+    const at = (r) => ({ route: r.route, s: r.s });
+    return this.mounts.map((m) => at(m.ride)).concat(this.wrecks.map((w) => at(w.ride)));
+  }
 
   /** Put a freshly spawned rider on his vehicle at s on `route`. hpMult: the wave's health multiplier. */
   mount(enemy, route, s, hpMult = 1) {
@@ -102,23 +108,30 @@ export class Riders {
     this.vehicles.place(m.handle, ride.x, ride.y, ride.z, ride.heading, ride.lean, 0);
     const M = m.enemy.model;
     setRidePose(M, m.V.stance);
-    M.root.rotation.order = 'YXZ';            // the yaw first, then the lean about the rider's own length
-    M.root.position.set(c.x, c.y, c.z);
+    // the yaw first, then the lean about the rider's own length; he tips with the vehicle about the
+    // ground under it (the vehicle's own pivot), so his body frame stays on the deck or the seat
+    const sl = Math.sin(ride.lean) * m.V.seatY;
+    M.root.rotation.order = 'YXZ';
+    M.root.position.set(ride.x + sl * Math.cos(ride.heading), ride.y + Math.cos(ride.lean) * m.V.seatY, ride.z - sl * Math.sin(ride.heading));
     M.root.rotation.set(0, c.yaw, -ride.lean);
   }
 
-  /** What stands in the lane of `m`: the player, the other vehicles on its loop, foot soldiers near it. */
+  /**
+   * What stands in the lane of `m`: the player, the other vehicles on its loop, wrecks and vehicles left
+   * standing, foot soldiers near it.
+   */
   _blockersFor(m) {
     const B = this._blockers, pool = this._pool, ride = m.ride, g = this.game;
     let n = 0;
     const add = (x, z, r) => { const b = pool[n] || (pool[n] = { x: 0, z: 0, r: 0 }); b.x = x; b.z = z; b.r = r; B[n++] = b; };
+    const near = (x, z) => (x - ride.x) * (x - ride.x) + (z - ride.z) * (z - ride.z) < NEAR * NEAR;
     const p = g.player;
     if (p.alive && p.pos.y < ride.y + 1.2) add(p.pos.x, p.pos.z, p.pos.radius);
     for (const o of this.mounts) if (o !== m && o.ride.route === ride.route) add(o.ride.x, o.ride.z, o.V.length / 2);
+    for (const w of this.wrecks) if (near(w.ride.x, w.ride.z)) add(w.ride.x, w.ride.z, w.V.length / 2);
     for (const o of this.enemies.cores) {
       if (!o.alive || o.mounted) continue;
-      const dx = o.x - ride.x, dz = o.z - ride.z;
-      if (dx * dx + dz * dz < NEAR * NEAR) add(o.x, o.z, o.radius);
+      if (near(o.x, o.z)) add(o.x, o.z, o.radius);
     }
     B.length = n;
     return B;
@@ -191,14 +204,20 @@ export class Riders {
     else { c.mounted = false; c.mount = null; }
   }
 
-  /** Held up too long: the rider leaves his vehicle lying where it stopped and fights on foot. */
+  /**
+   * Held up too long: the rider steps off and fights on foot. His vehicle is not shot out: it stays
+   * standing where it stopped, whole, without a crash, a sound or sparks, and goes away like a wreck.
+   */
   dismount(enemy) {
     const m = enemy.core.mount;
     if (!m) return;
     const ride = m.ride, side = m.V.width / 2 + 0.45;
     // he steps off to the right of his vehicle
     const x = ride.x + Math.cos(ride.heading) * side, z = ride.z - Math.sin(ride.heading) * side;
-    this._wreck(m, null);
+    leaveRide(ride);
+    m.target.alive = false;
+    this.vehicles.place(m.handle, ride.x, ride.y, ride.z, ride.heading, ride.lean, 0);
+    this._drop(m);
     this._onFoot(enemy, ride, x, z, false);
   }
 
@@ -218,18 +237,48 @@ export class Riders {
   /** The vehicle of `m` becomes a wreck: it slides on, falls over and lies there; the voice stops. */
   _wreck(m, dir) {
     const g = this.game, ride = m.ride;
-    crashRide(ride, dir ? { x: dir.x, z: dir.z } : null);
+    crashRide(ride, this._fallDir(m, dir));
     m.target.alive = false;
     this.vehicles.wreck(m.handle);
-    if (m.voice) { m.voice.stop(); m.voice = null; }
     g.audio.vehicleCrash({ x: ride.x, y: ride.y + 0.3, z: ride.z });
     for (let i = 0; i < 4; i++) {
       g.fx.impact('metal', ride.x + (rnd() - 0.5) * 0.6, ride.y + 0.25 + rnd() * 0.3, ride.z + (rnd() - 0.5) * 0.6, 0, 1, 0, false);
     }
+    this._drop(m);
+  }
+
+  /** `m` has lost its rider: its voice stops, it is no target, it stays in the street with the wrecks. */
+  _drop(m) {
+    if (m.voice) { m.voice.stop(); m.voice = null; }
     const k = this.mounts.indexOf(m);
     if (k >= 0) this.mounts.splice(k, 1);
-    this.wrecks.push({ ride, handle: m.handle, kind: m.kind, V: m.V, t: 0 });
+    this.wrecks.push({ ride: m.ride, handle: m.handle, kind: m.kind, V: m.V, t: 0 });
     this.enemies.touchTargets();
+  }
+
+  /**
+   * Which way a crashing vehicle falls, as the dir of crashRide: the way crashRide would pick (the hit's
+   * direction, or the inside of the turn) unless a wall stands on that side of the stretch it slides
+   * along while the other side is clear; then the other way, so a fallen motorbike does not stick into a
+   * wall the loop clears by less than a metre.
+   */
+  _fallDir(m, dir) {
+    const ride = m.ride, rx = Math.cos(ride.heading), rz = -Math.sin(ride.heading);
+    const own = dir ? { x: dir.x, z: dir.z } : null;
+    const side = (own ? own.x * rx + own.z * rz : ride.lean) < 0 ? -1 : 1;
+    const reach = RIDE.crashDrift + m.V.height, slide = (ride.speed * ride.speed) / (2 * RIDE.crashFriction);
+    if (this._clearSide(ride, side, reach, slide) || !this._clearSide(ride, -side, reach, slide)) return own;
+    return { x: -side * rx, z: -side * rz };
+  }
+
+  /** Nothing solid within `reach` metres on `side` of the loop (1: along (cos h, -sin h)) for `slide` metres on. */
+  _clearSide(ride, side, reach, slide) {
+    const cols = this.game.world.colliders, p = this._probe;
+    for (let d = 0; d < slide + 1; d += 1) {
+      ride.route.sample(ride.s + d, p);
+      if (raycast(cols, p.x, 0.45, p.z, Math.cos(p.heading) * side, 0, -Math.sin(p.heading) * side, reach, { noGround: true })) return false;
+    }
+    return true;
   }
 
   /** The rider stands at x, z and from now on fights like any soldier (core/ai), hunting the player. */
@@ -251,8 +300,9 @@ export class Riders {
     c.unseenT = 0;
     c.stuckT = 0;
     c.lastX = x; c.lastZ = z;
-    c.reaction = thrown ? 0.7 : 0.3;      // thrown off a crashing vehicle, he needs a moment
-    c.flinch = thrown ? 0.5 : 0;
+    // thrown off a crashing vehicle, he needs a moment
+    c.reaction = thrown ? RIDE.dismountReact.thrown : RIDE.dismountReact.held;
+    c.flinch = thrown ? RIDE.thrownFlinch : 0;
     c.lastSeen = { x: p.pos.x, z: p.pos.z };
     const M = enemy.model;
     M.root.rotation.order = 'XYZ';
@@ -260,7 +310,7 @@ export class Riders {
     M.root.position.set(c.x, c.y, c.z);
   }
 
-  /** Wrecks slide to a stop and fall on their side; after wreckSecs they are gone. */
+  /** Wrecks slide to a stop and fall on their side, vehicles left standing stand; after wreckSecs both are gone. */
   update(dt) {
     for (let i = this.wrecks.length - 1; i >= 0; i--) {
       const w = this.wrecks[i];

@@ -1,5 +1,5 @@
 import { test, assert, near } from '../harness.mjs';
-import { createRide, stepRide, rideRam, rideAim, crashRide } from '../../src/core/ride.js';
+import { createRide, stepRide, rideRam, rideAim, crashRide, leaveRide } from '../../src/core/ride.js';
 import { buildRoute, ROUTES } from '../../src/core/routes.js';
 import { VEHICLES, ENEMY_TYPES, RIDE, enemyParams } from '../../src/core/rules.js';
 import { createEnemy } from '../../src/core/ai.js';
@@ -109,6 +109,20 @@ test('stepRide: blocked for 3 seconds the rider gets off', () => {
   assert.equal(r2.blockedT, 0);
 });
 
+test('leaveRide: the rider gets off, the vehicle stays whole and stands upright where it stopped', () => {
+  const g = BIG.segments.find((q) => q.kind === 'arc');
+  const r = createRide(BIG, g.s0 + 2, 'moto', createRng(16));
+  for (let i = 0; i < 20; i++) stepRide(r, DT, []);
+  assert.ok(r.speed > 1 && Math.abs(r.lean) > 0.1, 'moving and leaning in the turn');
+  leaveRide(r);
+  assert.deepEqual([r.mounted, r.wrecked, r.alive], [false, false, true], 'not a wreck');
+  const at = { x: r.x, z: r.z, s: r.s };
+  for (let i = 0; i < 120; i++) assert.equal(stepRide(r, DT, []).dismount, false);
+  near(r.x, at.x, 1e-9); near(r.z, at.z, 1e-9); near(r.s, at.s, 1e-9);
+  assert.deepEqual([r.speed, r.lean, r.blockedT], [0, 0, 0]);
+  assert.equal(rideRam(r, { x: r.x, z: r.z, radius: 0.34 }, 99999), null, 'an empty vehicle never rams');
+});
+
 test('stepRide: at 15 m/s in a 0.1 s frame it does not skip a thin blocker 1 m ahead (substeps)', () => {
   const r = createRide(BIG, 0, 'moto', createRng(7));
   r.speed = 15;
@@ -196,6 +210,21 @@ test('rideAim: the first shot comes only after the reaction and the aim warning'
   assert.ok(first !== null && first >= (P.react[0] + P.telegraph) * 1000 - 20, 'first shot at ' + first);
 });
 
+test('rideAim: an empty magazine reloads in RIDE.reloadSecs (rules.js), not sooner', () => {
+  assert.ok(RIDE.reloadSecs > 0, 'the riders\' reload time is a rule: ' + RIDE.reloadSecs);
+  const rng = createRng(15);
+  const r = createRide(BIG, 0, 'scooter', rng);
+  const e = rider('scooterRider');
+  const ahead = { x: r.x + Math.sin(r.heading) * 12, z: r.z + Math.cos(r.heading) * 12, visible: true, alive: true };
+  e.mag = 0;
+  rideAim(r, e, ahead, 1000, rng);
+  const done = 1000 + RIDE.reloadSecs * 1000;
+  rideAim(r, e, ahead, done - 1, rng);
+  assert.equal(e.mag, 0, 'still reloading 1 ms before the end');
+  rideAim(r, e, ahead, done, rng);
+  assert.equal(e.mag, e.magSize, 'full again after RIDE.reloadSecs');
+});
+
 test('crashRide: the vehicle slides on, falls on its side and stays in its lane', () => {
   const r = createRide(BIG, 0, 'moto', createRng(14));
   const v0 = r.speed;
@@ -219,4 +248,56 @@ test('crashRide: the vehicle slides on, falls on its side and stays in its lane'
   assert.equal(r.fallSide, before.fallSide);
   r.speed = 20;
   assert.equal(rideRam(r, { x: r.x, z: r.z, radius: 0.34 }, 99999), null);
+});
+
+// The view turns a vehicle and its rider by Euler(0, heading, -lean, 'YXZ') (enemies/vehicles.js place,
+// enemies/riders.js): their up vector is (sin(lean) cos h, cos(lean), -sin(lean) sin h), so the top tips
+// along lean × (cos h, -sin h). Into a turn means towards the centre of the arc.
+const BIG_BACK = buildRoute({ id: 'big-back', points: [[-60, 40], [60, 40], [60, -40], [-60, -40]], closed: true, width: 1.6, radius: 25 });
+
+/** The arc piece of `route` under s, or null on a straight (the same piece route.sample reads). */
+function arcAt(route, s) {
+  const sw = ((s % route.length) + route.length) % route.length;
+  let g = route.segments[0];
+  for (const q of route.segments) if (q.s0 <= sw) g = q;
+  return g.kind === 'arc' ? g : null;
+}
+
+/** lean · ((cos h, -sin h) · (centre - pos)): positive when the vehicle leans towards the arc's centre. */
+const inward = (r, g) => r.lean * (Math.cos(r.heading) * (g.cx - r.x) - Math.sin(r.heading) * (g.cz - r.z));
+
+test('stepRide: in every turn of every loop the vehicle leans into the turn, towards the arc centre', () => {
+  const turns = { left: 0, right: 0 };
+  for (const route of [buildRoute(ROUTES[0]), ...ROUTES.slice(1).map(buildRoute), BIG, BIG_BACK]) {
+    for (const kind of ['scooter', 'moto']) {
+      const r = createRide(route, 0, kind, createRng(21));
+      for (let t = 0; t < route.length / VEHICLES[kind].speed * 1.5; t += DT) {
+        stepRide(r, DT, []);
+        const g = arcAt(route, r.s);
+        if (!g || Math.abs(r.lean) < 1e-3) continue;
+        const k = inward(r, g);
+        assert.ok(k > 0, route.id + ' ' + kind + ' leans out of the turn at s ' + r.s.toFixed(2) + ': ' + k);
+        // the drawn up vector itself points to the centre
+        const up = { x: Math.sin(r.lean) * Math.cos(r.heading), z: -Math.sin(r.lean) * Math.sin(r.heading) };
+        assert.ok(up.x * (g.cx - r.x) + up.z * (g.cz - r.z) > 0, route.id + ' ' + kind + ': up vector away from the centre');
+        turns[g.sign > 0 ? 'left' : 'right']++;
+      }
+    }
+  }
+  assert.ok(turns.left > 0 && turns.right > 0, 'turns both ways were driven: ' + JSON.stringify(turns));
+});
+
+test('crashRide: a wreck without a hit direction falls to the inside of its turn', () => {
+  for (const route of [BIG, BIG_BACK]) {
+    const g = route.segments.find((q) => q.kind === 'arc');
+    const r = createRide(route, g.s0 + g.len / 2 - 2, 'moto', createRng(22));
+    stepRide(r, DT, []);
+    assert.ok(inward(r, arcAt(route, r.s)) > 0, route.id + ': leans into the turn before the crash');
+    crashRide(r);
+    for (let i = 0; i < 18; i++) stepRide(r, DT, []);
+    const a = arcAt(route, r.s);
+    assert.ok(a, route.id + ': still in the turn');
+    assert.ok(Math.abs(r.lean) > 0.3, route.id + ': falling over: ' + r.lean);
+    assert.ok(inward(r, a) > 0, route.id + ': the wreck falls out of the turn: ' + inward(r, a));
+  }
 });

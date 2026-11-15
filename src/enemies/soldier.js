@@ -255,8 +255,10 @@ const RIDE_POSE = {
   // on a motorbike the knees grip the tank and the balls of the feet are on the pegs
   seat: { side: 0, shift: 0, hips: [[-1.35, 0.3], [-1.35, 0.3]], knees: [[1.75, -0.12], [1.75, -0.12]], torso: 0.3 },
 };
-// Where the vehicle's riders stand when the rider's own type does not say (core/rules VEHICLES.seatY).
-const STANCE_SEAT_Y = { stand: 0.16, skate: 0.11, seat: -0.1 };
+// Where the riders of a stance stand when the rider's own type does not say: the seatY of the first
+// vehicle of core/rules VEHICLES with that stance (scooter, skate, moto).
+const STANCE_SEAT_Y = {};
+for (const V of Object.values(VEHICLES)) if (!(V.stance in STANCE_SEAT_Y)) STANCE_SEAT_Y[V.stance] = V.seatY;
 const SOLE = [new THREE.Vector3(0, -0.47, -0.08), new THREE.Vector3(0, -0.47, 0.18)];   // heel and toe, in the knee's frame
 const _rm = new THREE.Matrix4(), _rv = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rq2 = new THREE.Quaternion();
 const _rx = new THREE.Vector3(1, 0, 0), _ry = new THREE.Vector3(0, 1, 0);
