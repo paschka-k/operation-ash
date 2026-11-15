@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ENEMY_TYPES } from '../core/rules.js';
+import { ENEMY_TYPES, VEHICLES } from '../core/rules.js';
 
 // -------------------------------------------------------------------- atlas
 const SLOTS = ['jacket', 'pants', 'vest', 'pouch', 'helmet', 'skin', 'cloth', 'glove', 'boot', 'metal', 'polymer', 'lens', 'strap', 'pad', 'plate', 'spare'];
@@ -27,7 +27,8 @@ const SHEET_X = 128;                 // the camouflage sheet starts here and run
 const SHEET_M = [0.72, 0.96];        // metres of cloth the sheet covers (about 1.9 mm per pixel)
 const swatchUv = (id) => [((id % 4) + 0.5) * CELL / ATLAS, (Math.floor(id / 4) + 0.5) * CELL / ATLAS];
 
-function paletteColors(T) {
+// `accent` (LOOK) paints the spare swatch: a beanie, a stripe on a helmet, the bosses' marks.
+function paletteColors(T, accent = 0xffffff) {
   const c = (hex) => new THREE.Color(hex);
   const uniform = c(T.uniform), vest = c(T.vest), helmet = c(T.helmet);
   return {
@@ -35,7 +36,7 @@ function paletteColors(T) {
     pouch: vest.clone().lerp(uniform, 0.35).multiplyScalar(1.2), helmet, skin: c(T.skin).multiplyScalar(0.72),
     cloth: vest.clone().multiplyScalar(0.8), glove: c(0x1a1a18), boot: c(0x16130f), metal: c(0x2b2d31),
     polymer: c(0x1a1b1d), lens: c(0x0a0e12), strap: c(0x0e0e0d), pad: vest.clone().multiplyScalar(0.7),
-    plate: helmet.clone().multiplyScalar(0.9), spare: c(0xffffff),
+    plate: helmet.clone().multiplyScalar(0.9), spare: c(accent),
   };
 }
 
@@ -63,8 +64,8 @@ function clothTone(x, y) {
 }
 
 let surfaceTex = null;
-function makeMaterial(T, contrast) {
-  const colors = paletteColors(T);
+function makeMaterial(T, contrast, accent) {
+  const colors = paletteColors(T, accent);
   const rgb = new Uint8Array(ATLAS * ATLAS * 4);
   // the colour texture is sRGB, the numbers here are linear
   const enc = (v) => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
@@ -224,45 +225,128 @@ const LOOK = {
   grunt: { helmet: true, pack: 'small', pouches: 3, camo: 1 },
   rusher: { headset: true, pack: 'none', pouches: 2, elbowPads: true, camo: 0.55 },
   heavy: { helmet: true, visor: true, pack: 'large', pouches: 3, armor: true, elbowPads: true, camo: 0.8 },
-  // ---- wave 14: riders and bosses (a first cut; the bosses' own armour pieces come with their look)
-  scooterRider: { headset: true, pack: 'none', pouches: 1, camo: 0.35 },
-  skater: { pack: 'small', pouches: 2, elbowPads: true, camo: 0.3 },
-  biker: { helmet: true, visor: true, pack: 'none', pouches: 2, elbowPads: true, camo: 0.45 },
-  bossBiker: { helmet: true, visor: true, pack: 'none', pouches: 3, armor: true, elbowPads: true, camo: 0.5 },
-  bossCommander: { helmet: true, visor: true, pack: 'large', pouches: 4, armor: true, elbowPads: true, camo: 0.9 },
+  // ---- wave 14: riders and bosses. Head gear sets them apart at a distance: a cap on the scooter,
+  // a beanie on the board, a full-face helmet on the motorbikes. The bosses wear their own armour,
+  // all of it parts of the one skinned mesh: plates, pauldrons, a gorget, guards on forearms and shins.
+  scooterRider: { cap: true, pack: 'none', pouches: 1, camo: 0.35 },
+  skater: { beanie: true, pack: 'small', pouches: 2, elbowPads: true, camo: 0.3, accent: 0x8f6a22 },
+  biker: { moto: true, pack: 'none', pouches: 2, elbowPads: true, shinGuards: true, camo: 0.2 },
+  bossBiker: {
+    moto: true, pack: 'none', pouches: 2, armor: true, elbowPads: true, shinGuards: true, gauntlets: true,
+    pauldrons: 'spiked', chestPlate: true, collar: true, camo: 0.15, accent: 0xa3241a,
+  },
+  bossCommander: {
+    helmet: true, visor: true, faceplate: true, pack: 'large', antenna: true, pouches: 4, armor: true, elbowPads: true,
+    pauldrons: 'heavy', chestPlate: true, collar: true, gauntlets: true, thighPlates: true, shinGuards: true, camo: 0.9, accent: 0xb8902a,
+  },
 };
 
-/**
- * Pose a soldier for riding: 'stand' upright on a scooter's deck, 'skate' knees bent on a board,
- * 'seat' on a motorbike with the thighs forward and the shins down to the footpegs. The hip bone keeps
- * its standing height (5 cm lower in the skater's crouch, so his feet stay on the board), so the rider's
- * hit zones stay where core/combat measures them; VEHICLES.seatY in core/rules puts the body frame so
- * that the feet stand on the deck or the pelvis rests on the seat. A plain first cut: the feet and the
- * lean are refined with the vehicles' own look.
- */
-export function setRidePose(model, stance) {
-  const [l, r] = model.legs;
-  model.hips.position.y = stance === 'skate' ? 0.88 : 0.93;
-  if (stance === 'seat') {
-    l.hip.rotation.x = r.hip.rotation.x = -1.35;
-    l.knee.rotation.x = r.knee.rotation.x = 1.45;
-    model.torso.rotation.x = 0.32;
-  } else if (stance === 'skate') {
-    l.hip.rotation.x = -0.35; r.hip.rotation.x = 0.2;
-    l.knee.rotation.x = 0.6; r.knee.rotation.x = 0.35;
-    model.torso.rotation.x = 0.18;
-  } else {
-    l.hip.rotation.x = -0.12; r.hip.rotation.x = 0.08;
-    l.knee.rotation.x = 0.12; r.knee.rotation.x = 0.05;
-    model.torso.rotation.x = 0.1;
+// ------------------------------------------------------------- riding poses
+// Leg angles per stance: [hip flexion, hip spread] and [knee bend, knee twist back] for the right leg
+// (legs[0]) and the left leg (legs[1]); a positive spread swings a leg out to its own side. `side` turns
+// the pelvis across the board, `shift` moves it along the soldier's left (metres, before the turn).
+// Measured on the rig so that the feet land where the vehicles (enemies/vehicles.js) have their deck,
+// footpegs or board: a standing or skating rider's soles are on his body frame (the deck), a seated
+// rider's soles are on the footpegs. There is no ankle: a shin that leans tips the boot with it, so the
+// shins stay near upright where the whole sole has to lie flat.
+const RIDE_POSE = {
+  stand: { side: 0, shift: 0, hips: [[0.06, -0.06], [-0.1, -0.06]], knees: [[0, 0], [0.1, 0]], torso: 0.1 },
+  skate: { side: Math.PI / 2, shift: -0.18, hips: [[-0.45, 0.17], [-0.45, 0.17]], knees: [[0.6, 0], [0.6, 0]], torso: 0.22 },
+  // on a motorbike the knees grip the tank and the balls of the feet are on the pegs
+  seat: { side: 0, shift: 0, hips: [[-1.35, 0.3], [-1.35, 0.3]], knees: [[1.75, -0.12], [1.75, -0.12]], torso: 0.3 },
+};
+// Where the vehicle's riders stand when the rider's own type does not say (core/rules VEHICLES.seatY).
+const STANCE_SEAT_Y = { stand: 0.16, skate: 0.11, seat: -0.1 };
+const SOLE = [new THREE.Vector3(0, -0.47, -0.08), new THREE.Vector3(0, -0.47, 0.18)];   // heel and toe, in the knee's frame
+const _rm = new THREE.Matrix4(), _rv = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rq2 = new THREE.Quaternion();
+const _rx = new THREE.Vector3(1, 0, 0), _ry = new THREE.Vector3(0, 1, 0);
+const poseHips = new Map();   // stance -> height of the hip bone that puts the lowest sole on the frame
+
+function applyLegs(model, P) {
+  model.legs.forEach((leg, i) => {
+    const out = i === 0 ? -1 : 1;
+    leg.hip.rotation.set(P.hips[i][0], 0, out * P.hips[i][1]);
+    leg.knee.rotation.set(P.knees[i][0], 0, out * P.knees[i][1]);
+  });
+}
+
+/** Height of the hip bone that puts the lowest heel or toe of the pose exactly on the body frame. */
+function standingHeight(model, stance, P) {
+  let y = poseHips.get(stance);
+  if (y !== undefined) return y;
+  const { hips } = model;
+  hips.position.set(0, 0.93, 0);
+  hips.rotation.set(0, P.side, 0, 'ZYX');
+  applyLegs(model, P);
+  let low = Infinity;
+  for (const leg of model.legs) {
+    hips.updateMatrix(); leg.hip.updateMatrix(); leg.knee.updateMatrix();
+    _rm.copy(hips.matrix).multiply(leg.hip.matrix).multiply(leg.knee.matrix);
+    for (const p of SOLE) low = Math.min(low, _rv.copy(p).applyMatrix4(_rm).y);
   }
+  y = 0.93 - low;
+  poseHips.set(stance, y);
+  return y;
+}
+
+/** Back to the soldier on foot: undoes every channel a riding pose sets beyond the walk's own. */
+function footPose(model) {
+  model.hips.position.set(0, 0.93, 0);
+  model.hips.rotation.set(0, 0, 0, 'XYZ');
+  for (const leg of model.legs) {
+    leg.hip.rotation.set(leg.hip.rotation.x, 0, 0);
+    leg.knee.rotation.set(leg.knee.rotation.x, 0, 0);
+  }
+  model.torso.rotation.set(0.06, model.torsoYaw, 0, 'XYZ');
+  model.ride = null;
+}
+
+/**
+ * Pose a soldier for riding, on top of the walk: call it every frame after the walk animation while he
+ * rides. 'stand' upright on a scooter's deck one foot before the other, 'skate' knees bent, crosswise on
+ * the board, 'seat' on a motorbike with the knees out round the tank and the boots on the footpegs.
+ * stance null puts him back on foot (also done by itself on the first frame the walk moves his legs
+ * again, so a rider who gets off walks normally even if nobody calls it).
+ *
+ * The chest, the arms and the gun keep the standing aim (MUZZLE stays true). A seated rider's hip bone
+ * keeps its standing height, so the hit zones of core/combat stay on him; core/rules VEHICLES.seatY puts
+ * his body frame at the deck or under the seat. lean: the vehicle's lean (the same number that goes to
+ * vehicles.place); the rider tips with it about the ground under the vehicle.
+ */
+export function setRidePose(model, stance, lean = 0) {
+  if (!stance || !RIDE_POSE[stance]) { if (model.ride) footPose(model); return; }
+  const T = ENEMY_TYPES[model.type] || {};
+  const P = RIDE_POSE[stance];
+  const scale = T.scale || 1;
+  const seatY = (T.vehicle && VEHICLES[T.vehicle] ? VEHICLES[T.vehicle].seatY : STANCE_SEAT_Y[stance]);
+  const hy = stance === 'seat' ? 0.93 : standingHeight(model, stance, P);
+  // lean about the ground under the vehicle, which lies seatY under the body frame
+  const g = -seatY / scale, a = P.shift, b = hy - g, c = Math.cos(lean), s = Math.sin(lean);
+  model.hips.position.set(a * c + b * s, g - a * s + b * c, 0);
+  model.hips.rotation.set(0, P.side, -lean, 'ZYX');
+  applyLegs(model, P);
+  // the chest turns back from the pelvis to the standing aim: Ry(-side) Rx(lean forward) Ry(stance yaw)
+  _rq.setFromAxisAngle(_ry, -P.side).multiply(_rq2.setFromAxisAngle(_rx, P.torso));
+  model.torso.quaternion.copy(_rq.multiply(_rq2.setFromAxisAngle(_ry, model.torsoYaw)));
+  if (!model.ride) {
+    model.ride = { l: 0, r: 0 };
+    // the walk only ever writes the legs' x: when it has, the rider is on foot again
+    model.mesh.onBeforeRender = () => {
+      const m = model.ride;
+      if (m && (model.legs[0].hip.rotation.x !== m.r || model.legs[1].hip.rotation.x !== m.l)) footPose(model);
+    };
+  }
+  model.ride.r = model.legs[0].hip.rotation.x;
+  model.ride.l = model.legs[1].hip.rotation.x;
 }
 
 // Where the weapon sits in the frame of the standing body (x: the soldier's left, z: forward),
 // where the hands hold it and how far the upper body turns into the stance.
+// The skater's sub-machine gun is held out in front like the pistol, the left hand on its foregrip.
 const STANCE = {
   rifle: { gun: [-0.09, 1.4, 0.27], yaw: -0.45, right: [0, -0.085, -0.035], left: [0, -0.05, 0.25], tip: [0, 0.008, 0.61] },
   pistol: { gun: [0, 1.4, 0.5], yaw: 0, right: [-0.012, -0.06, -0.04], left: [0.014, -0.065, -0.035], tip: [0, 0.012, 0.11] },
+  smg: { gun: [0, 1.38, 0.36], yaw: 0, right: [-0.012, -0.065, -0.03], left: [0.004, -0.07, 0.125], tip: [0, 0.012, 0.25] },
 };
 
 /** Muzzle of each weapon in the body frame, for tracers, the aim laser and sound. */
@@ -311,6 +395,7 @@ function makeRig(weapon) {
 
   return {
     hips, legs, torso, head, arms, gun,
+    torsoYaw: st.yaw,
     gunRest: gun.position.clone(),
     gunBack: new THREE.Vector3(0, 0, -1).applyQuaternion(gun.quaternion),   // recoil direction in the torso frame
     bones: [hips, legs[0].hip, legs[0].knee, legs[1].hip, legs[1].knee, torso, head, arms[0].shoulder, arms[0].elbow, arms[1].shoulder, arms[1].elbow, gun],
@@ -337,21 +422,37 @@ function buildGeometry(rig, look, weapon) {
     P.add(tube(0.058, 0.064, 0.17), leg.knee, 'boot', [0, -0.355, 0]);
     P.add(soft(0.105, 0.085, 0.265, 0.028), leg.knee, 'boot', [0, -0.4275, 0.05]);
     if (look.armor) P.add(soft(0.03, 0.2, 0.12, 0.01), leg.hip, 'vest', [sx * 0.085, -0.17, 0.0]);
+    if (look.thighPlates) P.add(soft(0.15, 0.2, 0.045, 0.014), leg.hip, 'plate', [0, -0.16, 0.08], [0.05, 0, 0]);
+    if (look.shinGuards) {
+      P.add(soft(0.095, 0.25, 0.04, 0.014), leg.knee, 'plate', [0, -0.18, 0.058], [-0.04, 0, 0]);
+      P.add(new THREE.SphereGeometry(0.062, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), leg.knee, 'plate', [0, -0.01, 0.045], [Math.PI / 2, 0, 0], [1, 0.75, 1]);
+    }
     if (weapon === 'pistol' && i === 0) P.add(box(0.045, 0.15, 0.075), leg.hip, 'polymer', [-0.1, -0.16, 0.0]);
+    if (weapon === 'smg' && i === 0) P.add(soft(0.05, 0.13, 0.07, 0.01), leg.hip, 'pouch', [-0.1, -0.15, 0.0]);
   }
 
   // chest, plate carrier and what hangs on it
   P.cloth(loft([[-0.02, 0.125, 0.095], [0.07, 0.158, 0.105], [0.3, 0.195, 0.125], [0.43, 0.208, 0.122], [0.5, 0.17, 0.1], [0.545, 0.075, 0.07]]), torso, 'jacket', 1.0, 0.57);
   P.add(loft([[0.09, 0.185, 0.128], [0.15, 0.203, 0.143], [0.4, 0.214, 0.146], [0.465, 0.19, 0.13]], 14, 3.2), torso, 'vest');
   for (const sx of [-1, 1]) P.add(soft(0.085, 0.018, 0.24, 0.006), torso, 'vest', [sx * 0.128, 0.474, 0]);
+  // a boss's chest plate takes the place of the pouches up front: they move down to the belly
+  const pouchY = look.chestPlate ? 0.075 : 0.2;
   for (let k = 0; k < look.pouches; k++) {
     const x = (k - (look.pouches - 1) / 2) * 0.082;
-    P.add(soft(0.072, 0.125, 0.048, 0.012), torso, 'pouch', [x, 0.2, 0.166]);
+    P.add(soft(0.072, 0.125, 0.048, 0.012), torso, 'pouch', [x, pouchY, 0.166]);
   }
-  P.add(soft(0.13, 0.065, 0.03, 0.01), torso, 'pouch', [0, 0.355, 0.153]);
+  if (look.chestPlate) {
+    P.add(soft(0.27, 0.2, 0.036, 0.016), torso, 'plate', [0, 0.33, 0.162], [-0.06, 0, 0]);
+    P.add(soft(0.25, 0.055, 0.03, 0.012), torso, 'plate', [0, 0.2, 0.158]);
+    P.add(soft(0.2, 0.02, 0.012, 0.004), torso, 'spare', [0, 0.36, 0.182], [-0.06, 0, 0]);
+    P.add(soft(0.28, 0.3, 0.03, 0.014), torso, 'plate', [0, 0.3, -0.158]);
+  } else {
+    P.add(soft(0.13, 0.065, 0.03, 0.01), torso, 'pouch', [0, 0.355, 0.153]);
+  }
   P.add(box(0.045, 0.1, 0.035), torso, 'polymer', [0.135, 0.39, 0.15]);
   P.add(tube(0.004, 0.004, 0.17, 5), torso, 'polymer', [0.135, 0.525, 0.15]);
   P.add(tube(0.056, 0.062, 0.1), torso, 'cloth', [0, 0.58, 0]);
+  if (look.collar) P.add(tube(0.112, 0.132, 0.065, 14, true), torso, 'plate', [0, 0.535, 0.004]);
   if (look.pack === 'small') {
     P.add(soft(0.26, 0.3, 0.1, 0.03), torso, 'vest', [0, 0.3, -0.19]);
     P.add(soft(0.2, 0.08, 0.08, 0.02), torso, 'pouch', [0, 0.46, -0.18]);
@@ -360,37 +461,82 @@ function buildGeometry(rig, look, weapon) {
     P.add(tube(0.065, 0.065, 0.32).rotateZ(Math.PI / 2), torso, 'pouch', [0, 0.54, -0.21]);
     for (const sx of [-1, 1]) P.add(soft(0.07, 0.16, 0.1, 0.02), torso, 'pouch', [sx * 0.19, 0.22, -0.22]);
     P.add(tube(0.092, 0.1, 0.07, 12), torso, 'vest', [0, 0.545, 0]);
-  } else {
+    if (look.antenna) {
+      P.add(soft(0.08, 0.13, 0.06, 0.01), torso, 'polymer', [0.11, 0.42, -0.33]);
+      P.add(tube(0.006, 0.003, 0.55, 5), torso, 'polymer', [0.13, 0.75, -0.33], [-0.12, 0, 0]);
+    }
+  } else if (!look.chestPlate) {
     P.add(soft(0.17, 0.24, 0.05, 0.02), torso, 'vest', [0, 0.32, -0.16]);
   }
 
   // head: balaclava, a strip of skin around the eyes, glasses, then helmet or headset
   const HS = [0.93, 1.1, 1.02];
   P.add(new THREE.SphereGeometry(0.1, 14, 10), head, 'cloth', [0, 0, 0], [0, 0, 0], HS);
-  P.add(new THREE.SphereGeometry(0.1012, 10, 4, Math.PI / 2 - 0.7, 1.4, 1.08, 0.66), head, 'skin', [0, 0, 0], [0, 0, 0], HS);
-  if (look.visor) {
-    P.add(new THREE.SphereGeometry(0.113, 12, 5, Math.PI / 2 - 0.85, 1.7, 1.0, 0.9), head, 'lens', [0, 0, 0], [0, 0, 0], [0.95, 1.1, 1.05]);
-    P.add(soft(0.13, 0.05, 0.05, 0.015), head, 'helmet', [0, -0.09, 0.078]);
+  if (look.moto) {
+    // full-face helmet: a shell over the whole head, a dark visor, a chin bar; a boss's has a stripe
+    const hs = [0.94, 1, 1.06];
+    P.add(new THREE.SphereGeometry(0.136, 16, 11), head, 'helmet', [0, 0.012, 0.004], [0, 0, 0], hs);
+    P.add(new THREE.SphereGeometry(0.1385, 14, 5, Math.PI / 2 - 0.78, 1.56, 1.12, 0.52), head, 'lens', [0, 0.012, 0.004], [0, 0, 0], hs);
+    P.add(soft(0.15, 0.06, 0.06, 0.02), head, 'helmet', [0, -0.098, 0.096], [0.25, 0, 0]);
+    P.add(soft(0.06, 0.02, 0.02, 0.006), head, 'polymer', [0, -0.088, 0.13], [0.25, 0, 0]);
+    if (look.accent) P.add(new THREE.TorusGeometry(0.137, 0.014, 4, 18, Math.PI).rotateY(Math.PI / 2), head, 'spare', [0, 0.012, 0.004], [0, 0, 0], [0.94, 1.01, 1.07]);
   } else {
-    P.add(new THREE.SphereGeometry(0.1055, 10, 3, Math.PI / 2 - 0.56, 1.12, 1.27, 0.25), head, 'lens', [0, 0, 0], [0, 0, 0], HS);
-    P.add(tube(0.0985, 0.0985, 0.02, 14, true), head, 'strap', [0, 0.02, 0], [0, 0, 0], [0.955, 1, 1.05]);
+    P.add(new THREE.SphereGeometry(0.1012, 10, 4, Math.PI / 2 - 0.7, 1.4, 1.08, 0.66), head, 'skin', [0, 0, 0], [0, 0, 0], HS);
+    if (look.visor) {
+      P.add(new THREE.SphereGeometry(0.113, 12, 5, Math.PI / 2 - 0.85, 1.7, 1.0, 0.9), head, 'lens', [0, 0, 0], [0, 0, 0], [0.95, 1.1, 1.05]);
+      P.add(soft(0.13, 0.05, 0.05, 0.015), head, 'helmet', [0, -0.09, 0.078]);
+    } else {
+      P.add(new THREE.SphereGeometry(0.1055, 10, 3, Math.PI / 2 - 0.56, 1.12, 1.27, 0.25), head, 'lens', [0, 0, 0], [0, 0, 0], HS);
+      P.add(tube(0.0985, 0.0985, 0.02, 14, true), head, 'strap', [0, 0.02, 0], [0, 0, 0], [0.955, 1, 1.05]);
+    }
+    for (const sx of [-1, 1]) P.add(tube(0.037, 0.037, 0.03).rotateZ(Math.PI / 2), head, 'polymer', [sx * 0.097, -0.012, 0]);
   }
-  for (const sx of [-1, 1]) P.add(tube(0.037, 0.037, 0.03).rotateZ(Math.PI / 2), head, 'polymer', [sx * 0.097, -0.012, 0]);
+  if (look.faceplate) {
+    // the commander's mask under the visor, with a breathing grille
+    P.add(soft(0.125, 0.075, 0.035, 0.012), head, 'plate', [0, -0.058, 0.096], [0.15, 0, 0]);
+    for (const sx of [-1, 1]) P.add(tube(0.022, 0.026, 0.03, 10).rotateX(Math.PI / 2), head, 'polymer', [sx * 0.042, -0.07, 0.12]);
+  }
   if (look.helmet) {
     // tipped back: the brim sits above the eyes in front and covers the neck behind
     const tip = [-0.3, 0, 0], at = [0, 0.022, -0.006], hs = [0.98, 1, 1.09];
     P.add(new THREE.SphereGeometry(0.123, 14, 7, 0, Math.PI * 2, 0, Math.PI * 0.52), head, 'helmet', at, tip, hs);
     P.add(new THREE.TorusGeometry(0.1227, 0.007, 5, 16).rotateX(Math.PI / 2).translate(0, -0.0077, 0), head, 'helmet', at, tip, hs);
     P.add(box(0.045, 0.04, 0.02), head, 'polymer', [0, 0.098, 0.118], [-0.35, 0, 0]);
+  } else if (look.cap) {
+    // a peaked cap pulled low
+    P.add(new THREE.SphereGeometry(0.106, 14, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), head, 'helmet', [0, 0.018, -0.004], [-0.12, 0, 0], [0.96, 0.82, 1.04]);
+    P.add(new THREE.CylinderGeometry(0.082, 0.082, 0.007, 14, 1, false, -Math.PI / 2, Math.PI), head, 'helmet', [0, 0.03, 0.06], [0.2, 0, 0], [0.95, 1, 1]);
+    P.add(soft(0.03, 0.012, 0.012, 0.004), head, 'helmet', [0, 0.112, 0.0]);
+  } else if (look.beanie) {
+    // a knitted cap with a turned-up band
+    P.add(new THREE.SphereGeometry(0.108, 14, 7, 0, Math.PI * 2, 0, Math.PI * 0.56), head, 'spare', [0, 0.012, -0.006], [-0.15, 0, 0], [0.96, 1.12, 1.03]);
+    P.add(tube(0.106, 0.108, 0.04, 14), head, 'spare', [0, 0.03, -0.008], [-0.15, 0, 0], [0.96, 1, 1.03]);
   } else if (look.headset) {
     P.add(new THREE.TorusGeometry(0.105, 0.008, 5, 12, Math.PI), head, 'polymer', [0, -0.008, 0]);
   }
 
-  for (const arm of arms) {
+  for (const [k, arm] of arms.entries()) {
+    const sx = k === 0 ? -1 : 1;
     P.cloth(limb(0.06, 0.047, UPPER, 10, 4), arm.shoulder, 'jacket', 0.34, 0.4);
     P.cloth(limb(0.047, 0.038, FORE - 0.05, 10, 3), arm.elbow, 'jacket', 0.27, 0.33);
     if (look.elbowPads) P.add(soft(0.07, 0.095, 0.03, 0.01), arm.elbow, 'pad', [0, -0.02, -0.047]);
-    if (look.armor) P.add(new THREE.SphereGeometry(0.086, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), arm.shoulder, 'plate', [0, -0.012, 0], [0, 0, 0], [1, 0.8, 1]);
+    const cap = (r, y, s) => new THREE.SphereGeometry(r, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(...s).translate(0, y, 0);
+    if (look.pauldrons) {
+      // layered shoulder plates, the top one wider than the arm; the gang leader's carry studs
+      P.add(cap(0.112, 0.006, [1.08, 0.72, 1.12]), arm.shoulder, 'plate', [sx * 0.012, 0, 0]);
+      P.add(cap(0.104, -0.048, [1.05, 0.55, 1.08]), arm.shoulder, 'plate', [sx * 0.016, 0, 0]);
+      P.add(cap(0.094, -0.094, [1.02, 0.45, 1.04]), arm.shoulder, 'plate', [sx * 0.018, 0, 0]);
+      if (look.pauldrons === 'spiked') {
+        for (const [dx, dz] of [[0.02, -0.04], [0.035, 0.0], [0.02, 0.04]]) {
+          P.add(new THREE.ConeGeometry(0.014, 0.05, 6), arm.shoulder, 'metal', [sx * dx, 0.09, dz], [0, 0, -sx * 0.4]);
+        }
+      } else {
+        P.add(soft(0.03, 0.012, 0.11, 0.004), arm.shoulder, 'spare', [sx * 0.07, 0.07, 0], [0, 0, -sx * 0.6]);
+      }
+    } else if (look.armor) {
+      P.add(new THREE.SphereGeometry(0.086, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), arm.shoulder, 'plate', [0, -0.012, 0], [0, 0, 0], [1, 0.8, 1]);
+    }
+    if (look.gauntlets) P.add(soft(0.078, 0.16, 0.07, 0.016), arm.elbow, 'plate', [0, -0.13, 0.004]);
     P.add(tube(0.041, 0.043, 0.035, 8), arm.elbow, 'glove', [0, -FORE + 0.055, 0]);
     P.add(new THREE.SphereGeometry(0.044, 8, 6), arm.elbow, 'glove', [0, -FORE, 0], [0, 0, 0], [0.9, 1.3, 1.05]);
   }
@@ -399,6 +545,17 @@ function buildGeometry(rig, look, weapon) {
     P.add(box(0.028, 0.034, 0.18), gun, 'metal', [0, 0.012, 0.02]);
     P.add(box(0.026, 0.02, 0.12), gun, 'polymer', [0, -0.013, 0.01]);
     P.add(box(0.027, 0.095, 0.04), gun, 'polymer', [0, -0.066, -0.045], [0.2, 0, 0]);
+  } else if (weapon === 'smg') {
+    // compact sub-machine gun: receiver, short barrel, straight magazine, foregrip, stock folded along the left
+    P.add(box(0.04, 0.06, 0.22), gun, 'metal', [0, 0.005, 0.03]);
+    P.add(box(0.036, 0.03, 0.12), gun, 'polymer', [0, -0.027, 0.08]);
+    P.add(tubeZ(0.011, 0.1), gun, 'metal', [0, 0.012, 0.19]);
+    P.add(tubeZ(0.016, 0.03), gun, 'metal', [0, 0.012, 0.235]);
+    P.add(box(0.03, 0.09, 0.04), gun, 'polymer', [0, -0.06, -0.03], [0.25, 0, 0]);
+    P.add(box(0.026, 0.16, 0.035), gun, 'metal', [0, -0.1, 0.045], [0.12, 0, 0]);
+    P.add(box(0.028, 0.07, 0.03), gun, 'polymer', [0, -0.07, 0.13]);
+    P.add(box(0.012, 0.03, 0.2), gun, 'metal', [0.027, -0.005, -0.06]);
+    P.add(box(0.024, 0.016, 0.05), gun, 'polymer', [0, 0.043, 0.0]);
   } else {
     P.add(box(0.042, 0.072, 0.3), gun, 'metal', [0, 0, 0.06]);
     P.add(box(0.046, 0.056, 0.24), gun, 'polymer', [0, 0.004, 0.33]);
@@ -423,8 +580,8 @@ const KITS = new Map();
 const BOUNDS = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0.1), 1.4);
 
 /**
- * A soldier of the given type. Returns {root, mesh, material, hips, legs[{hip, knee}], torso,
- * head, arms, gun, gunRest, gunBack, dispose()}. Bones are animated by the caller.
+ * A soldier of the given type. Returns {type, root, mesh, material, hips, legs[{hip, knee}], torso,
+ * head, arms, gun, gunRest, gunBack, torsoYaw, dispose()}. Bones are animated by the caller.
  */
 export function buildSoldier(type) {
   const T = ENEMY_TYPES[type];
@@ -435,7 +592,7 @@ export function buildSoldier(type) {
   let kit = KITS.get(type);
   if (!kit) {
     const look = LOOK[type] || LOOK.grunt;
-    KITS.set(type, (kit = { geometry: buildGeometry(rig, look, T.weapon), material: makeMaterial(T, look.camo) }));
+    KITS.set(type, (kit = { geometry: buildGeometry(rig, look, T.weapon), material: makeMaterial(T, look.camo, look.accent) }));
   }
   const mesh = new THREE.SkinnedMesh(kit.geometry, kit.material);
   mesh.castShadow = true;
@@ -445,5 +602,5 @@ export function buildSoldier(type) {
   const skeleton = new THREE.Skeleton(rig.bones);
   mesh.bind(skeleton);
   root.scale.setScalar(T.scale);
-  return { root, mesh, material: kit.material, ...rig, dispose: () => skeleton.dispose() };
+  return { type, root, mesh, material: kit.material, ...rig, dispose: () => skeleton.dispose() };
 }

@@ -2,8 +2,26 @@
 // use a panner, a shared convolution reverb adds space, wind and distant
 // gunfire provide the ambience.
 
+import { VEHICLES } from '../core/rules.js';
+
 const rnd = Math.random;
 const rr = (a, b) => a + (b - a) * rnd();
+
+// ---- wave 14: the vehicles' running sound.
+// At most this many engines sound at once (the nearest); each one is a fixed graph of nodes.
+const ENGINE_CHANNELS = 3;
+const ENGINE_STALE_MS = 300;   // a voice not updated for this long counts as gone
+const ENGINE_HOLD = 0.3;       // seconds a channel keeps sounding after its last update
+// engine: loudness of a combustion engine (0: none); idle and top: its pitch in Hz at idle and at the top
+// of a gear; gears; fire: the rate of the firing chop per cycle of the pitch; chop: its depth.
+// whine: [loudness, Hz added at full speed] of an electric motor.
+// roll: [loudness, band Hz, metres between the joints of the pavement, depth of their knock].
+const ENGINE_SOUND = {
+  scooter: { engine: 0, idle: 0, top: 0, gears: 0, fire: 1, chop: 0, whine: [0.16, 950], roll: [0.12, 1700, 1.2, 0.2] },
+  skate: { engine: 0, idle: 0, top: 0, gears: 0, fire: 1, chop: 0, whine: [0, 0], roll: [0.42, 700, 0.9, 0.55] },
+  moto: { engine: 0.36, idle: 34, top: 105, gears: 4, fire: 0.5, chop: 0.35, whine: [0, 0], roll: [0.08, 500, 2, 0.1] },
+  heavyMoto: { engine: 0.46, idle: 24, top: 68, gears: 4, fire: 0.5, chop: 0.55, whine: [0, 0], roll: [0.1, 400, 2, 0.1] },
+};
 
 // Shots of the wave 13 guns: crack [Hz, s, gain], body [Hz, s, gain, end Hz, rate], thump [Hz, s, gain, end Hz],
 // hiss [Hz, s, gain], echo [delay s, s, gain] (a far wall answering), send: share into the reverb.
@@ -26,6 +44,7 @@ export class AudioSys {
     this.heartTimer = 0;
     this.lowHealth = 0;
     this.lastStep = 0;
+    this.engines = new Set();   // live voices from engine(), sounding or waiting for a channel
   }
 
   // ------------------------------------------------------------- setup
@@ -76,7 +95,7 @@ export class AudioSys {
   /**
    * Play a named sound. names: pistol, rifle, shotgun, enemy, reload, dry, switch, hit, kill, hurt, step,
    * jump, land, explosion, crate, pickup, death, victory, waveStart, waveClear, telegraph, shell, pump, whiz,
-   * impact:concrete|metal|wood|flesh. opts: {pan: world position {x,y,z}, volume}.
+   * vehicleCrash, bossIntro, impact:concrete|metal|wood|flesh. opts: {pan: world position {x,y,z}, volume}.
    */
   play(name, opts = {}) {
     if (!this.ready) return;
@@ -105,6 +124,8 @@ export class AudioSys {
       case 'telegraph': this.telegraph(pos); break;
       case 'shell': this.shell(); break;
       case 'pump': this.pump(); break;
+      case 'vehicleCrash': this.vehicleCrash(pos || { x: 0, y: 0, z: 0 }); break;
+      case 'bossIntro': this.bossIntro(); break;
       default: break;
     }
   }
@@ -508,23 +529,174 @@ export class AudioSys {
     });
   }
 
-  // ---- wave 14: vehicles and bosses (silent stubs for now; their voices come with the vehicles' look)
+  // ---- wave 14: vehicles and bosses
   /**
    * A looping voice for one vehicle of `kind` (a key of VEHICLES). update(pos, speed) moves it and
-   * sets its pitch every frame, stop() ends it. At most three play at once, the nearest ones.
+   * sets its pitch every frame, stop() ends it. At most ENGINE_CHANNELS sound at once, the nearest ones;
+   * the rest wait silently until they come near. Before init() and with the sound off nothing is heard.
+   * A voice that stops getting updates (the shop, a menu, a rider nobody stopped) fades out by itself.
    */
   engine(kind) {
-    return { kind, update(pos, speed) {}, stop() {} };
+    const voice = {
+      kind, x: 0, y: 0, z: 0, speed: 0, seen: -1, channel: null, detune: rr(0.95, 1.05),
+      update: (pos, speed = 0) => {
+        if (!voice.live) return;
+        voice.x = pos.x; voice.y = pos.y ?? 0; voice.z = pos.z; voice.speed = speed;
+        voice.seen = performance.now();
+      },
+      stop: () => {
+        if (!voice.live) return;
+        voice.live = false;
+        this.engines.delete(voice);
+        if (voice.channel) this._release(voice.channel);
+      },
+      live: true,
+    };
+    this.engines.add(voice);
+    return voice;
   }
 
-  /** A vehicle hits the ground and slides. */
+  /** Give the nearest fresh voices a channel each and push their sound into it. Every frame. */
+  _mixEngines() {
+    const now = performance.now(), cam = this.game.gr.camera.position;
+    const fresh = [];
+    for (const v of this.engines) {
+      if (now - v.seen > ENGINE_STALE_MS) { if (v.channel) this._release(v.channel); continue; }
+      // a voice already sounding keeps its channel against a slightly nearer newcomer
+      v.rank = Math.hypot(v.x - cam.x, v.y - cam.y, v.z - cam.z) * (v.channel ? 0.85 : 1);
+      fresh.push(v);
+    }
+    fresh.sort((a, b) => a.rank - b.rank);
+    const keep = this.muted ? [] : fresh.slice(0, ENGINE_CHANNELS);
+    for (const v of fresh) if (v.channel && !keep.includes(v)) this._release(v.channel);
+    for (const v of keep) {
+      if (!v.channel) {
+        const ch = this._engineChannels().find((c) => !c.voice);
+        if (!ch) continue;
+        ch.voice = v; v.channel = ch; ch.fresh = true;
+      }
+      this._drive(v.channel, v, Math.hypot(v.x - cam.x, v.y - cam.y, v.z - cam.z));
+    }
+  }
+
+  /** The channels, built on first use: each one can sound like any kind of vehicle. */
+  _engineChannels() {
+    if (this._channels) return this._channels;
+    const ctx = this.ctx;
+    const loop = (rate = 1) => { const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true; s.playbackRate.value = rate; return s; };
+    const filter = (type, f, q) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = q; return n; };
+    const gain = (v) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+    const osc = (type, f) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; return o; };
+    this._channels = [];
+    for (let i = 0; i < ENGINE_CHANNELS; i++) {
+      const panner = ctx.createPanner();
+      panner.panningModel = 'equalpower';
+      panner.distanceModel = 'inverse';
+      panner.refDistance = 5;
+      panner.rolloffFactor = 1.3;
+      panner.maxDistance = 200;
+      const send = gain(0.22);
+      panner.connect(this.master); panner.connect(send); send.connect(this.reverb);
+      // far away only the low end carries
+      const air = filter('lowpass', 9000, 0.5), out = gain(0);
+      out.connect(air); air.connect(panner);
+      // combustion: a sawtooth and its sub-octave through a resonant low-pass, chopped at the firing rate
+      const saw = osc('sawtooth', 40), sub = osc('square', 20), engLp = filter('lowpass', 500, 2.2);
+      const chop = gain(0.6), fire = osc('sine', 40), depth = gain(0.4), eng = gain(0);
+      saw.connect(engLp); sub.connect(engLp); engLp.connect(chop); fire.connect(depth); depth.connect(chop.gain);
+      const rasp = loop(0.8), raspBp = filter('bandpass', 900, 0.9), raspGain = gain(0.25);
+      rasp.connect(raspBp); raspBp.connect(raspGain); raspGain.connect(chop);
+      chop.connect(eng); eng.connect(out);
+      // electric motor: a whine and its octave
+      const whine = osc('triangle', 300), whine2 = osc('sine', 600), whineBp = filter('bandpass', 900, 1.4), whineGain = gain(0);
+      whine.connect(whineBp); whine2.connect(whineBp); whineBp.connect(whineGain); whineGain.connect(out);
+      // tyres or wheels on the road, with the knock of the joints in the pavement
+      const roll = loop(1.1), rollBp = filter('bandpass', 1200, 0.7), knock = gain(0.7), bump = osc('square', 3), bumpDepth = gain(0.3), rollGain = gain(0);
+      roll.connect(rollBp); rollBp.connect(knock); bump.connect(bumpDepth); bumpDepth.connect(knock.gain); knock.connect(rollGain); rollGain.connect(out);
+      for (const n of [saw, sub, fire, rasp, whine, whine2, roll, bump]) n.start();
+      this._channels.push({ voice: null, fresh: false, panner, air, out, saw, sub, engLp, fire, depth, eng, raspBp, whine, whine2, whineBp, whineGain, rollBp, bump, bumpDepth, rollGain });
+    }
+    return this._channels;
+  }
+
+  /** Set a channel to the sound of its voice: pitch and loudness from the speed, place from the position. */
+  _drive(ch, v, dist) {
+    const t = this.ctx.currentTime, S = ENGINE_SOUND[v.kind] || ENGINE_SOUND.moto;
+    const top = (VEHICLES[v.kind] || VEHICLES.moto).speed;
+    const k = Math.max(0, Math.min(1.2, v.speed / top));
+    const jump = ch.fresh;
+    ch.fresh = false;
+    // a value: jumps there for a new voice, glides there for the one already sounding
+    const set = (param, value, tau = 0.06) => {
+      if (jump) { param.cancelScheduledValues(t); param.setValueAtTime(value, t); } else param.setTargetAtTime(value, t, tau);
+    };
+    const P = ch.panner;
+    if (P.positionX) { set(P.positionX, v.x, 0.03); set(P.positionY, v.y + 0.5, 0.03); set(P.positionZ, v.z, 0.03); } else P.setPosition(v.x, v.y + 0.5, v.z);
+    set(ch.air.frequency, 9000 / (1 + dist / 22), 0.1);
+    // the engine runs through its gears: revs climb within a gear and drop at each shift
+    let rev = 0;
+    if (S.gears) {
+      const g = Math.min(S.gears - 1, Math.floor(k * S.gears)), within = Math.min(1, k * S.gears - g);
+      rev = g === 0 ? 0.2 * Math.min(1, k * 40) + 0.75 * within : 0.45 + 0.55 * within;
+    }
+    const f = (S.idle + (S.top - S.idle) * rev) * v.detune;
+    set(ch.saw.frequency, f, 0.05); set(ch.sub.frequency, f / 2, 0.05); set(ch.fire.frequency, f * S.fire, 0.05);
+    set(ch.engLp.frequency, 260 + 1500 * rev * rev + 300 * k, 0.08);
+    set(ch.depth.gain, S.chop, 0.1);
+    set(ch.raspBp.frequency, 500 + 1400 * rev, 0.08);
+    const w = 220 + S.whine[1] * k;
+    set(ch.whine.frequency, w * v.detune, 0.05); set(ch.whine2.frequency, w * 2.01 * v.detune, 0.05); set(ch.whineBp.frequency, w * 1.6, 0.08);
+    set(ch.rollBp.frequency, S.roll[1] + 900 * k, 0.1);
+    set(ch.bump.frequency, Math.max(0.5, v.speed / S.roll[2]), 0.1);
+    set(ch.bumpDepth.gain, S.roll[3], 0.1);
+    set(ch.eng.gain, S.engine * (S.gears ? 0.55 + 0.45 * rev : 0), 0.08);
+    set(ch.whineGain.gain, S.whine[0] * Math.min(1, k * 1.5), 0.08);
+    set(ch.rollGain.gain, S.roll[0] * Math.min(1, k * 1.2), 0.08);
+    // the channel fades in, and falls silent by itself unless the next frame comes to hold it
+    const o = ch.out.gain;
+    o.cancelScheduledValues(t);
+    if (jump) o.setValueAtTime(0, t);
+    o.setTargetAtTime(1, t, jump ? 0.12 : 0.05);
+    o.setTargetAtTime(0, t + ENGINE_HOLD, 0.08);
+  }
+
+  _release(ch) {
+    if (ch.voice) ch.voice.channel = null;
+    ch.voice = null;
+    const o = ch.out.gain, t = this.ctx.currentTime;
+    o.cancelScheduledValues(t);
+    o.setTargetAtTime(0, t, 0.05);
+  }
+
+  /** A vehicle hits the ground and slides: a thud, crunching metal and plastic, a scrape along the asphalt. */
   vehicleCrash(pos) {
     if (!this.ready) return;
+    const dest = this._bus(pos, 0.35);
+    this._tone(dest, { dur: 0.4, type: 'sine', f: 80, f2: 34, gain: 0.9 });
+    this._noise(dest, { dur: 0.45, type: 'lowpass', f: 700, f2: 110, q: 0.8, gain: 0.9, rate: 0.6 });
+    this._noise(dest, { dur: 0.22, type: 'bandpass', f: 1700, f2: 900, q: 1.4, gain: 0.6 });
+    for (let i = 0; i < 4; i++) {
+      this._tone(dest, { t: 0.03 + i * rr(0.05, 0.11), dur: rr(0.12, 0.25), type: 'triangle', f: rr(700, 1700), f2: rr(400, 700), gain: rr(0.05, 0.12) });
+    }
+    this._noise(dest, { t: 0.06, dur: 1.1, type: 'bandpass', f: 2600, f2: 900, q: 1.2, gain: 0.32, attack: 0.08, rate: 1.4 });
+    for (let i = 0; i < 3; i++) this._noise(dest, { t: rr(0.08, 0.4), dur: 0.05, type: 'highpass', f: 5200, q: 0.8, gain: rr(0.08, 0.16) });
   }
 
-  /** A boss arrives. */
+  /** A boss arrives: drums, a low brass chord swelling up and a ring of struck metal. */
   bossIntro() {
     if (!this.ready) return;
+    const dest = this._bus(null, 0.7);
+    const brass = this.ctx.createBiquadFilter();
+    brass.type = 'lowpass'; brass.frequency.value = 900; brass.Q.value = 0.8;
+    brass.connect(dest);
+    [41.2, 61.7, 82.4, 98].forEach((f, i) => this._tone(brass, { t: 0.05, dur: 2.6, type: 'sawtooth', f, f2: f * 0.985, gain: i < 2 ? 0.22 : 0.1, attack: 0.5 }));
+    [0, 0.42, 0.84, 1.05].forEach((t, i) => {
+      this._tone(dest, { t, dur: 0.55, type: 'sine', f: i === 3 ? 70 : 92, f2: 38, gain: 0.95 });
+      this._noise(dest, { t, dur: 0.18, type: 'lowpass', f: 420, q: 0.7, gain: 0.5 });
+    });
+    this._noise(dest, { dur: 1.3, type: 'lowpass', f: 180, f2: 2200, q: 0.6, gain: 0.22, attack: 1.0 });
+    this._tone(dest, { t: 1.3, dur: 1.2, type: 'triangle', f: 1180, f2: 1130, gain: 0.07 });
+    this._tone(dest, { t: 1.3, dur: 0.9, type: 'triangle', f: 1660, f2: 1600, gain: 0.04 });
   }
 
   // --------------------------------------------------------------- ambience
@@ -553,6 +725,7 @@ export class AudioSys {
     const cam = this.game.gr.camera;
     this.setListener(cam.position, cam.getWorldDirection(this._fwd || (this._fwd = cam.position.clone())));
     if (this._loops && this.game.state !== 'playing') this.weaponLoops(0, false, false);   // a menu or a death screen silences them
+    if (this.engines.size || this._channels) this._mixEngines();
     // distant fighting and rumbles
     this.ambTimer -= dt;
     if (this.ambTimer <= 0 && this.game.state === 'playing') {
