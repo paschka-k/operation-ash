@@ -20,6 +20,7 @@ export class Director {
     this.core = createGame(seed);
     this.maxWaves = MAX_WAVES;
     this.seenRiders = new Set();   // kinds of rider this game has announced (wave 14)
+    this.grenadeTipDue = false;    // a new game has not yet shown the grenade tip (wave 1 only)
   }
 
   get now() { return this.game.time * 1000; }
@@ -39,6 +40,7 @@ export class Director {
     this.saveArsenal();
     this.shopIn = 0;
     this.seenRiders.clear();
+    this.grenadeTipDue = true;
     this.bossIntro = null;
     this.bannerUntil = 0;
     this.game.hud.bossBar(null);
@@ -120,6 +122,13 @@ export class Director {
         g.hud.banner(g.t('wave') + ' ' + ev.wave, sub, secs);
         this.bannerUntil = this.now + secs * 1000;
         g.audio.waveStart();
+        // the grenade tip: only the first wave of a new game; a revive or a later wave finds the flag spent
+        if (this.grenadeTipDue) {
+          this.grenadeTipDue = false;
+          const n = g.weapons && g.weapons.arsenal ? g.weapons.arsenal.grenades : 0;
+          const key = (g.hud.prompts && g.hud.prompts.grenade) || '';
+          if (ev.wave === 1 && n > 0 && key) g.hud.toast(g.t('grenadeTip', { key, n }), 4.5);
+        }
         this.saveArsenal();
         break;
       }

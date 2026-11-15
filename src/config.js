@@ -249,6 +249,10 @@ const STR = {
     gpuHintRestart: 'Затем полностью закройте и снова откройте браузер.',
     gpuHintClose: 'Понятно',
 
+    // ---- wave 14: main keys on the settings screen, the grenade tip of wave 1
+    mainKeys: 'Главные клавиши',
+    grenadeTip: '{key} — граната (×{n})',
+
     // ---- wave 14: riders and bosses in play (the banner line, the boss bar, the kill feed, the enemy bar)
     newEnemy: 'Новый противник',
     newEnemies: 'Новые противники',
@@ -433,6 +437,10 @@ const STR = {
     gpuHintNvidia: 'Or in the NVIDIA Control Panel: "Manage 3D settings → Program Settings", pick the browser and "High-performance NVIDIA processor".',
     gpuHintRestart: 'Then close the browser completely and open it again.',
     gpuHintClose: 'Got it',
+
+    // ---- wave 14: main keys on the settings screen, the grenade tip of wave 1
+    mainKeys: 'Main keys',
+    grenadeTip: '{key} — grenade (×{n})',
 
     // ---- wave 14: riders and bosses in play (the banner line, the boss bar, the kill feed, the enemy bar)
     newEnemy: 'New enemy',

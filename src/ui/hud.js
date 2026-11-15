@@ -104,6 +104,11 @@ export class HUD {
     mk('settings', `
       <div class="panel settings">
         <div class="logo small" data-t="settings"></div>
+        <div class="mainkeys" id="mainkeys">
+          <div class="mk-title" data-t="mainKeys"></div>
+          ${['grenade', 'inventory', 'map'].map((k) => `<div class="ctl"><span class="ctl-name" data-t="ctl_${k}"></span><span class="ctl-key" data-k="${k}"></span><span class="ctl-pad" data-pk="${k}"></span></div>`).join('')}
+          <button class="btn" id="btn-mkeys" data-t="keysBtn"></button>
+        </div>
         <label class="row"><span data-t="sens"></span><input type="range" id="s-sens" min="0.2" max="3" step="0.05"><output id="o-sens"></output></label>
         <label class="row"><span data-t="fov"></span><input type="range" id="s-fov" min="60" max="105" step="1"><output id="o-fov"></output></label>
         <label class="row"><span data-t="volume"></span><input type="range" id="s-vol" min="0" max="1" step="0.05"><output id="o-vol"></output></label>
@@ -203,6 +208,7 @@ export class HUD {
     q('s-pinv').addEventListener('change', (e) => { s.padInvertY = e.target.checked; g.saveSettings(); });
     q('s-playout').addEventListener('change', (e) => { s.padLayout = e.target.value; g.saveSettings(); this.refreshBindings(); });
     q('btn-keys').onclick = () => { if (g.keys) g.keys.open(); };
+    q('btn-mkeys').onclick = () => { if (g.keys) g.keys.open(); };
     this.syncSettings();
   }
 
@@ -344,9 +350,10 @@ export class HUD {
     setTimeout(() => d.remove(), 1300);
   }
 
-  toast(text) {
+  toast(text, secs = 1.6) {
     const n = this.q('h-toast');
     n.textContent = text;
+    n.style.animationDuration = secs + 's';
     n.classList.remove('on');
     void n.offsetWidth;
     n.classList.add('on');
