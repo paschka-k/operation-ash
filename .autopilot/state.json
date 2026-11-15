@@ -5,35 +5,35 @@
     "date": "2026-10-10"
   },
   "totals": {
-    "requirements": 56,
-    "reqDone": 46,
+    "requirements": 58,
+    "reqDone": 50,
     "reqPartial": 8,
-    "reqDeferred": 2,
-    "stories": 128,
-    "storiesDone": 120,
+    "reqDeferred": 0,
+    "stories": 130,
+    "storiesDone": 124,
     "verifiedTests": 26,
-    "verifiedBrowser": 87,
+    "verifiedBrowser": 91,
     "verifiedCode": 6,
-    "pending": 3
+    "pending": 1
   },
   "gates": [
     {
       "id": "G1",
       "name": "Манифест полон",
       "ok": true,
-      "detail": "56 требований, у каждого есть история"
+      "detail": "58 требований, у каждого есть история"
     },
     {
       "id": "G2",
       "name": "Истории проверяемы",
       "ok": true,
-      "detail": "128 историй проверены"
+      "detail": "130 историй проверены"
     },
     {
       "id": "G3",
       "name": "Честные статусы",
       "ok": true,
-      "detail": "8 историй не закрыты полностью, у каждой названа причина"
+      "detail": "6 историй не закрыты полностью, у каждой названа причина"
     }
   ],
   "requirements": [
@@ -783,10 +783,8 @@
       "stories": [
         "E16-1"
       ],
-      "status": "deferred",
-      "weakest": [
-        "E16-1"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R51",
@@ -806,7 +804,8 @@
       "text": "Гранаты.",
       "stories": [
         "E14-2",
-        "E15-5"
+        "E15-5",
+        "E16-4"
       ],
       "status": "done",
       "weakest": []
@@ -841,10 +840,8 @@
       "stories": [
         "E16-2"
       ],
-      "status": "deferred",
-      "weakest": [
-        "E16-2"
-      ]
+      "status": "done",
+      "weakest": []
     },
     {
       "id": "R56",
@@ -854,6 +851,30 @@
       "note": "Сообщение пользователя от 14 ноября (по-немецки): после смерти игрок возрождается на той волне, где погиб.",
       "stories": [
         "E14-6"
+      ],
+      "status": "done",
+      "weakest": []
+    },
+    {
+      "id": "R57",
+      "kind": "request",
+      "verbatim": true,
+      "text": "use allways the most performed GPU of the System. Don't use only the onboards GPU!",
+      "note": "Страница не может выбрать видеокарту сама: игра просит high-performance, показывает видеокарту и подсказывает настройку Windows. У пользователя RTX 4070 и Intel Iris Xe, браузер рисует на Intel, пока пользователь не переключит.",
+      "stories": [
+        "E16-3"
+      ],
+      "status": "done",
+      "weakest": []
+    },
+    {
+      "id": "R58",
+      "kind": "request",
+      "verbatim": true,
+      "text": "why this key is not visable in the settings?",
+      "note": "О клавише гранаты.",
+      "stories": [
+        "E16-4"
       ],
       "status": "done",
       "weakest": []
@@ -2475,9 +2496,9 @@
       "req": [
         "R50"
       ],
-      "status": "deferred",
-      "verified": "pending",
-      "evidence": "по согласованному плану это волна 14, после волн 11–13"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "сборка автопилота .autopilot/2026-11-14-wave-14-vehicles-bosses: петли main/north/south (src/core/routes.js), езда src/core/ride.js, ездоки src/enemies/riders.js, модели src/enemies/vehicles.js; самокаты с волны 3, скейты с 4, мотоциклисты с 5 (охрана главаря) и с 7; подбитый транспорт оставляет пешего ездока; наезд мотоцикла −35 и отброс; слепая приёмка в чистом клоне: волны 1–10, ездоки по всем трём петлям, ошибок нет; три ездока +30 вызовов отрисовки"
     },
     {
       "id": "E16-2",
@@ -2487,9 +2508,34 @@
       "req": [
         "R55"
       ],
-      "status": "deferred",
-      "verified": "pending",
-      "evidence": "по согласованному плану это волна 14, после волн 11–13"
+      "status": "done",
+      "verified": "browser",
+      "evidence": "главарь на тяжёлом мотоцикле с двумя мотоциклистами на волне 5, командир в броне с гранатами на волне 10, в бесконечном режиме каждая пятая; баннер БОСС, полоса здоровья вверху, строка ленты; смерть на волне 5 и возрождение — босс снова с полным здоровьем (слепая приёмка)"
+    },
+    {
+      "id": "E16-3",
+      "epic": "E16",
+      "text": "Игра всегда просит самую быструю видеокарту, показывает, на какой идёт (настройки, F3), и на встроенной графике подсказывает, как переключить браузер на дискретную в Windows и в панели NVIDIA.",
+      "acceptance": "На машине с Intel Iris Xe подсказка видна, название видеокарты в настройках и в строке F3.",
+      "req": [
+        "R57"
+      ],
+      "status": "done",
+      "verified": "browser",
+      "evidence": "src/core/gpu.js, src/ui/gpu.js; слепая приёмка: «Видеокарта: Intel Iris Xe Graphics», «60 FPS · Intel Iris Xe Graphics», блок о встроенной видеокарте с инструкциями; переключает видеокарту пользователь в Windows"
+    },
+    {
+      "id": "E16-4",
+      "epic": "E16",
+      "text": "Клавиша гранаты на виду: блок «Главные клавиши» на первом экране настроек (граната, инвентарь, карта) и подсказка «G — граната (×2)» в начале первой волны.",
+      "acceptance": "Блок виден без перехода и показывает текущую привязку; подсказка только на волне 1.",
+      "req": [
+        "R58",
+        "R52"
+      ],
+      "status": "done",
+      "verified": "browser",
+      "evidence": "слепая приёмка: «Главные клавиши: Граната G · Инвентарь I · Карта M», тост на волне 1, G бросает гранату (2 → 1); README называет G, I, M"
     }
   ]
 }

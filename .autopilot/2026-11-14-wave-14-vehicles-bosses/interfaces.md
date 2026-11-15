@@ -41,7 +41,7 @@
 ## Границы, решённые в спецификации
 
 ### 1. Правила — `src/core/rules.js` (раздел `// ---- wave 14: vehicles and bosses`)
-- `VEHICLES = { scooter, skate, moto, heavyMoto }`, у каждого: `hp`, `armor` (множитель урона), `speed` (м/с крейсерская), `accel`, `brake` (м/с²), `length`, `width`, `height`, `seatY` (высота таза ездока над землёй), `stance` ('stand' | 'skate' | 'seat'), `ramSpeed` (м/с, с какой скорости наезд бьёт; `Infinity` — не бьёт), `ramDamage`, `ramCooldown` (с), `wreckSecs`, `score` (очки и деньги за подбитый транспорт).
+- `VEHICLES = { scooter, skate, moto, heavyMoto }`, у каждого: `hp`, `armor` (множитель урона), `speed` (м/с крейсерская), `accel`, `brake` (м/с²), `length`, `width`, `height`, `seatY` (высота системы тела ездока над землёй: `core.y = ride.y + seatY`, таз на `seatY + 0.93·scale` — так решил таск 01, D01), `stance` ('stand' | 'skate' | 'seat'), `ramSpeed` (м/с, с какой скорости наезд бьёт; `Infinity` — не бьёт), `ramDamage`, `ramCooldown` (с), `wreckSecs`, `score` (очки и деньги за подбитый транспорт).
 - Новые строки `ENEMY_TYPES` (все поля, как у существующих, плюс): `scooterRider`, `skater`, `biker` (поле `vehicle: 'scooter'|'skate'|'moto'`), `bossBiker` (`vehicle: 'heavyMoto'`, `boss: true`), `bossCommander` (`boss: true`, без транспорта, `grenadeEvery` с). `dmg` в пределах 8..12 (тест). `mountedAcc` — множитель точности на ходу.
 - `firstRiderWave = { scooterRider: 3, skater: 5, biker: 7 }`.
 - `waveRoster(n, endless)` → `{ [type]: count }` — полный состав волны n, сумма равна `waveCount(n)`; ездоки вырезаются из рядовых, босс — из тяжёлых. `waveComposition(n)` не меняется (остаётся пешей основой, его тесты целы).
@@ -85,6 +85,10 @@
 
 ### 8. Босс-командир — `src/core/boss.js` (новый, чистый) и `squad.js`
 - `thinkBoss(e, world, dt, now)` оборачивает `thinkEnemy`: длинные очереди, раз в `grenadeEvery` с намерение `grenade: {x, z}` при видимости игрока; стоит дольше 4 с — идёт к игроку (`chase`). Бросок гранаты делает слой через API гранат волны 13.
+- Граната врага (решено после обновления `notes.md`): сейчас `game.grenades.launch(eye, unitDir, vel)` бросает только по направлению, а взрыв (`props.explode(..., 'grenade')`) ранит всех ботов и засчитывает их игроку. Таск 03 добавляет в `src/game/grenades.js` бросок врага `launchAt(from, target, {owner: 'enemy'})` с баллистическим расчётом скорости до точки (чистая функция расчёта — в `src/core/grenade.js`, таск 01 или 03, с тестом); взрыв гранаты врага ранит игрока, ящики и бочки, но не ботов, и никому не засчитывает убийство.
+
+### 7a. Где гасить новое (из обновлённых `notes.md`)
+- Голоса двигателей, транспорт, обломки и полоса босса убираются во всех местах, где сейчас гасят звуки оружия и чистят мир: `startGame`, `toMenu`, `revive`, открытие магазина (`showShop`), пауза (голоса — тише или стоп), победа. `audio.update` не идёт на паузе и в магазине, поэтому голоса там гасятся явно.
 
 ### 9. Что даёт волна 12 (ветка `wave-12`, 232b499) — опираться на это
 - Событие `spawn` несёт `hpMult` (`waveHpMult(n) = 1 + 0.06·(n−1)`, растёт и в бесконечном режиме); его применять и к ездоку, и к здоровью транспорта, и к боссу.
@@ -97,4 +101,27 @@
 - Снимок коллайдеров улиц `tests/core/fixtures/street-colliders.json` — снимается из игры (`__game.world.colliders`) и проверяет петли без браузера.
 
 ## Что построили законченные таски
-(дописывается по мере работы)
+
+### 01 — ядро, петли, езда, заглушки, видеокарта
+- rules: `VEHICLES{scooter,skate,moto,heavyMoto}`, `RIDE`, `BOSS{…,throwTime}`, `RIDER_RULES`, `firstRiderWave`, `waveRoster(n, endless)` → `{type: count}`, `bossForWave(n)` → `null | 'bossBiker' | 'bossCommander'`, `maxRiders(n, endless)` → 3 | 4, `ZONE_MULT.vehicle = 1`; пять строк `ENEMY_TYPES` (`scooterRider`, `skater` с `weapon: 'smg'`, `biker`, `bossBiker`, `bossCommander`; поля `vehicle`, `mountedAcc`, `boss`, `grenadeEvery`). `startWave` строит очередь из `waveRoster`.
+- routes: `ROUTES` = `main` (156 м, через перекрёсток), `north` (47 м), `south` (40 м); точка `[x, z]` или `[x, z, cornerRadius]`; `buildRoute(def)` → `{id, length, width, closed, segments, sample(s, out?), nearest(x, z)}`; `routeClearance(route, colliders, step = 0.5)`; `onRoute(x, z, margin, routes?)`; `levelRoutes()`; `ROUTE_KEEP_CLEAR = 1.2`. Наименьший зазор 0.83 м. `level.js` не менялся; ящики и бочки не встают ближе 1.2 м к петлям.
+- ride: `createRide(route, s, kind, rng)` → Ride (`+curvature, impact, phase`); `stepRide(ride, dt, [{x, z, r}])` → `{dismount}`; `rideRam(ride, {x, z, radius?, alive?}, now)` → `null | {damage, pushX, pushZ}` (push в м/с); `rideAim(ride, e, {x, z, visible, alive?}, now, rng)` → `{fire: {dist, acc} | null, laser, cue}`; `crashRide(ride, dir?)`.
+- combat: цель `{kind: 'vehicle', x, y, z, yaw, length, width, height, alive, hp, armor, view}` → зона `'vehicle'`.
+- boss: `thinkBoss(e, world, dt, now)` → намерение `thinkEnemy` + `grenade: {x, z} | null`. grenade: `launchGrenadeAt({from, target, now})` — бросок в точку (для командира).
+- gpu: `core/gpu.js` `gpuInfo(raw)` → `{raw, name, kind, hint}`; `gr.gpu`, `gr.powerPreference`; `ui/gpu.js` `createGpuInfo(game)` (CSS подсказки внедряется из этого файла); `hud.fpsLine(n)`; `settings.gpuHintClosed`.
+- vehicles (заглушка, серые коробки): `createVehicles(game)` → `{add(kind) → {kind, copy, wrecked}, place(h, x, y, z, heading, lean, roll), wreck, remove, clear, pools, count}`. soldier: `setRidePose(model, stance)` (заглушка). sfx: `engine(kind)` → `{update(pos, speed), stop()}` (молчит), `vehicleCrash(pos)`, `bossIntro()`.
+- Оговорки 01, обязательные для 02 и 03: `seatY` — высота системы тела ездока, а не таза: `core.y = ride.y + seatY` держит зоны попадания на месте, таз оказывается на `seatY + 0.93·scale` (у мотоцикла −0.1, у тяжёлого −0.25 под масштаб босса). У `'smg'` нет строки `STANCE`/`MUZZLE` — скейтер пока с видом винтовки (это 02). На волне 5 охрана главаря — два мотоциклиста, поэтому мотоциклисты впервые появляются на волне 5, а не на 7 (подпись первого появления решает 03).
+
+### 03 — ездоки и боссы в бою
+- enemies: `spawnRider(type, route, s, tier, opts)` → Enemy · `mountedCount()` · `riders {mount, ride, riderKilled, update, targets(), occupied(), clearWrecks(), silence(), clear(), mounted, wrecks, vehicles}` · `touchTargets()` · `shielded(fn)` · `targets` содержит и живые цели транспорта · `raycast` возвращает VehicleView `{alive, pos, hp, T.key 'v_<kind>', P.hp, takeDamage}`. Enemy: `shoot(dist, now, acc?)`, `throwGrenade({x, z})`.
+- grenades: `launchAt(from, target, {owner})` → граната с `.owner`; `harmless(fn)`. player: `knock {vx, vz}`, `knockBack(vx, vz)`, урон вида `'vehicle'`.
+- hud: `bossBar(enemy | null)`, `bossDown(name)`, источники ленты `'dismount'` и `'vehicle'` (pts null), `radarRiders`, `bigMapRiders`, `#h-boss`. director: `spawnRider(ev)`, `announceBoss(e)`, `onVehicleDestroyed(enemy, kind)`, `onRam(enemy)`, `riderNews(wave, endless)`.
+- core/riderlogic: `isRider`, `riderSlotFree`, `deferSpawn(g, type, next)`, `pickRiderSpawn(routes, player, visible, {rng, occupied})`, `payVehicle(g, kind)`, `vehicleHp(kind, hpMult)`, `newRiderKinds(roster, seen)`, `riderMarkerAlpha(mode, sinceFired, mounted)`, `RIDER_SPAWN`, `RIDER_MARKER`. `snapshot()` даёт `riders, wrecks, vehicles`.
+- Оговорки 03: метки ездоков на большой карте рисует hud.js поверх холста bigmap.js; 24a не держится буквально (ярус 3 ×1.15 к здоровью сверх `waveHpMult`), множитель применён точно к ездокам, транспорту и боссам; подписи нового вида на волнах 3 и 5 (мотоциклисты объявлены на 5 как охрана); граната врага уводит цепочки бочек от ботов через `props.timers`; ездок не поворачивается к игроку при стрельбе; обломки не мешают ездокам.
+
+### 02 — вид и звук
+- vehicles: подписи прежние + `wrecks` (пул обломков на вид) и экспорт `buildVehicleModel(kind, wrecked)`. soldier: `setRidePose(model, stance, lean = 0)` (`stance` null — снова пеший), `buildSoldier()` даёт ещё `type` и `torsoYaw`, новый `MUZZLE.smg`. audio: `engine(kind)` → `{update(pos, speed), stop()}`, `vehicleCrash(pos)`, `bossIntro()`, `play('vehicleCrash' | 'bossIntro')`.
+- Оговорки 02: в браузере исполнитель ничего не видел (вкладки и сервера не было); вызовы отрисовки оценены (до 30 на три вида), не измерены; ездок не наклоняется с транспортом — riders.js сбрасывает крен корня, нужен `setRidePose(M, stance, ride.lean)`; сборка 8 моделей ~0.6 с. Оркестратор после посадки видел в игре самокатчика на волне 3 (стоит на деке, держит руль, имя и полоса здоровья), ошибок в консоли нет.
+
+### 04 — клавиша гранаты на виду
+- hud: `toast(text, secs = 1.6)`, блок `#mainkeys` с кнопкой `#btn-mkeys` вверху «Настроек»; director: `grenadeTipDue`; строки `mainKeys`, `grenadeTip`.
