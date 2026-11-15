@@ -314,3 +314,19 @@ body.pad-active canvas#game { cursor: none; }
   .scope-lens::after { width: 94vw; height: 94vw; }
 }
 
+
+/* ---- wave 14: the boss bar on top of the screen (#h-boss), rider and boss lines of the kill feed */
+.bossbar { position: absolute; top: 104px; left: 50%; transform: translateX(-50%); width: clamp(240px, calc(100vw - 700px), 520px); text-align: center; pointer-events: none; }
+.bb-name { font-size: 15px; font-weight: 700; letter-spacing: 0.24em; color: #ffc440; text-transform: uppercase; margin-bottom: 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+.bb-track { height: 10px; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 196, 64, 0.65); }
+.bb-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #b8231a, var(--danger)); transition: width 0.15s; }
+.bb-veh { height: 4px; margin: 3px auto 0; width: 70%; background: rgba(0, 0, 0, 0.6); }
+.bb-vfill { height: 100%; width: 100%; background: #c9ccd0; }
+.feed-line.dismount { border-right-color: #c9ccd0; }
+.feed-line.ram { border-right-color: var(--danger); }
+.feed-line.ram .feed-name { color: #ffb0a6; }
+.feed-line.boss { border-right-color: #ffc440; background: linear-gradient(90deg, transparent, rgba(80, 56, 0, 0.7)); }
+.feed-line.boss .feed-name { color: #ffc440; font-weight: 700; letter-spacing: 0.12em; }
+@media (max-width: 900px) {
+  .bossbar { top: 96px; }
+}

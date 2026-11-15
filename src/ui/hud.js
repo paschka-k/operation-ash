@@ -1,8 +1,9 @@
 // HUD and menu screens, built as DOM over the canvas.
 
 import * as THREE from 'three';
-import { t, setLang, getLang, QUALITY_ORDER } from '../config.js';
-import { enemyMarkerAlpha, WEAPON_ORDER } from '../core/rules.js';
+import { t, setLang, getLang, QUALITY_ORDER, MAP_HALF } from '../config.js';
+import { WEAPON_ORDER } from '../core/rules.js';
+import { riderMarkerAlpha } from '../core/riderlogic.js';
 import { keyName, bindingText, padHint } from './keys.js';
 
 // Screens are full-window panels; one is shown at a time. Other modules add theirs with addScreen().
@@ -47,6 +48,7 @@ export class HUD {
       <div class="enemybar" id="h-ebar"><div class="eb-name" id="h-ename"></div><div class="eb-track"><div class="eb-fill" id="h-efill"></div></div></div>
       <div class="hitmarker" id="h-hit"><i></i><i></i><i></i><i></i></div>
       <div class="dmg-layer" id="h-dmg"></div>
+      <div class="bossbar hidden" id="h-boss"><div class="bb-name" id="h-bname"></div><div class="bb-track"><div class="bb-fill" id="h-bfill"></div></div><div class="bb-veh" id="h-bveh"><div class="bb-vfill" id="h-bvfill"></div></div></div>
       <div class="banner" id="h-banner"><div class="banner-t" id="h-banner-t"></div><div class="banner-s" id="h-banner-s"></div></div>
       <div class="toast" id="h-toast"></div>
       <div class="status">
@@ -366,16 +368,57 @@ export class HUD {
     if (n.textContent !== text) n.textContent = text;
   }
 
+  /**
+   * A line of the kill feed. source tells how: a plain shot ('player'), 'barrel', 'grenade', 'fire', and
+   * from wave 14 'dismount' (a rider shot off his vehicle: the vehicle's points, no kill) and 'vehicle'
+   * (a motorbike ran the player down: pts null, nothing earned).
+   */
   killfeed(name, head, source, pts, streak) {
-    const feed = this.q('h-feed');
-    const line = el('div', 'feed-line' + (head ? ' head' : ''));
-    // how the bot died, when it was not a plain shot: a barrel, a grenade, the flamer's fire
-    const cause = { barrel: 'barrel', grenade: 'grenade', fire: 'killFire' }[source];
+    const cause = { barrel: 'barrel', grenade: 'grenade', fire: 'killFire', dismount: 'feedDismount', vehicle: 'feedRam' }[source];
     const how = cause ? ' · ' + t(cause) : head ? ' · ' + t('headshot') : '';
-    line.innerHTML = `<span class="feed-name">${name}${how}</span><span class="feed-pts">+${pts}</span>` + (streak >= 3 ? `<span class="feed-streak">${t('streak')} ×${streak}</span>` : '');
+    const cls = 'feed-line' + (head ? ' head' : '') + (source === 'dismount' ? ' dismount' : source === 'vehicle' ? ' ram' : '');
+    this._feed(cls, `<span class="feed-name">${name}${how}</span>` + (pts != null ? `<span class="feed-pts">+${pts}</span>` : '') +
+      (streak >= 3 ? `<span class="feed-streak">${t('streak')} ×${streak}</span>` : ''));
+  }
+
+  /** The line of its own a boss gets in the kill feed when he falls. */
+  bossDown(name) {
+    this._feed('feed-line boss', `<span class="feed-name">${t('boss')} · ${name} · ${t('bossDown')}</span>`);
+  }
+
+  _feed(cls, html) {
+    const feed = this.q('h-feed');
+    const line = el('div', cls, html);
     feed.appendChild(line);
     while (feed.children.length > 5) feed.firstChild.remove();
     setTimeout(() => line.remove(), 4200);
+  }
+
+  /**
+   * The boss's health bar on top of the screen (#h-boss): his name, his health, and while he rides, a thin
+   * bar for his vehicle. null hides it.
+   */
+  bossBar(enemy) {
+    this.boss = enemy || null;
+    const box = this.q('h-boss');
+    box.classList.toggle('hidden', !this.boss);
+    if (this.boss) { delete this.cache['h-bname']; this.bossW = this.bossVW = null; }
+  }
+
+  updateBoss() {
+    const e = this.boss;
+    if (!e) return;
+    if (!e.alive) { this.bossBar(null); return; }
+    this.set('h-bname', t('boss') + ' · ' + t(e.T.key));
+    const w = Math.max(0, (e.hp / e.P.hp) * 100).toFixed(1) + '%';
+    if (this.bossW !== w) { this.bossW = w; this.q('h-bfill').style.width = w; }
+    const v = e.pos.mounted && e.pos.vehicle ? e.pos.vehicle : null;
+    const vw = v ? Math.max(0, (v.hp / v.view.P.hp) * 100).toFixed(1) + '%' : '';
+    if (this.bossVW !== vw) {
+      this.bossVW = vw;
+      this.q('h-bveh').classList.toggle('hidden', !v);
+      if (v) this.q('h-bvfill').style.width = vw;
+    }
   }
 
   showResult(kind, stats) {
@@ -466,7 +509,9 @@ export class HUD {
     this.updateStamina(dt);
     this.updateEconomy(dt);
     this.updateWeaponExtras(dt, w);
+    this.updateBoss();
     this.drawRadar();
+    this.drawBigMapRiders();
   }
 
   // ---- wave 11: the sprint bar above the health bar (#h-stam, #h-sfill)
@@ -555,19 +600,20 @@ export class HUD {
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-    // enemies as red dots: by default only those that fired recently, as in the genre (settings.radarEnemies)
+    // enemies as red dots: by default only those that fired recently, as in the genre (settings.radarEnemies);
+    // riders on their vehicles always, as a diamond (riderMarkerAlpha), and a boss with a gold ring
     const mode = g.settings.radarEnemies;
-    let shown = 0;
+    let shown = 0, riders = 0;
     for (const e of g.enemies.list) {
       if (!e.alive) continue;
-      const a = enemyMarkerAlpha(mode, g.time - e.lastFired);
+      const a = riderMarkerAlpha(mode, g.time - e.lastFired, !!e.pos.mounted);
       if (a <= 0) continue;
       const [x, y] = toScreen(e.pos.x, e.pos.z);
-      ctx.fillStyle = `rgba(255,60,50,${a.toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      if (enemyMark(ctx, e, x, y, a, 1)) riders++;
       shown++;
     }
     this.radarShown = shown; // enemies drawn last frame (tests read it)
+    this.radarRiders = riders;
     ctx.restore();
     // rim and player marker
     ctx.strokeStyle = 'rgba(232,137,43,0.8)'; ctx.lineWidth = 2.5;
@@ -575,6 +621,53 @@ export class HUD {
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.moveTo(C, C - 9); ctx.lineTo(C + 6.5, C + 7); ctx.lineTo(C, C + 3.5); ctx.lineTo(C - 6.5, C + 7); ctx.closePath(); ctx.fill();
   }
+
+  /**
+   * Riders and bosses on the big map (ui/bigmap.js draws the plain red dots of the radar rule): the map has
+   * just been drawn this frame, these marks go on top in the same layout (the edge m = 14 px of BigMap.draw).
+   * A rider on his vehicle shows even when he has not fired. bigMapRiders counts them (tests read it).
+   */
+  drawBigMapRiders() {
+    const g = this.game, map = g.bigMap;
+    this.bigMapRiders = 0;
+    if (!map || !map.isOpen) return;
+    const cv = map.canvas, ctx = map.ctx, L = cv.clientWidth;
+    if (!(L > 0)) return;
+    const m = 14, k = (L - 2 * m) / (2 * MAP_HALF);
+    const mode = g.settings.radarEnemies;
+    for (const e of g.enemies.list) {
+      if (!e.alive || !(e.pos.mounted || e.T.boss)) continue;
+      const a = riderMarkerAlpha(mode, g.time - e.lastFired, !!e.pos.mounted);
+      if (a <= 0) continue;
+      enemyMark(ctx, e, m + (e.pos.x + MAP_HALF) * k, m + (e.pos.z + MAP_HALF) * k, a, 1.1);
+      this.bigMapRiders++;
+    }
+  }
+}
+
+/**
+ * One enemy marker at x, y of a map canvas: a red dot for a soldier on foot, a red diamond with a light
+ * rim for a rider on his vehicle, a gold ring round a boss. Returns true for a rider on a vehicle.
+ */
+function enemyMark(ctx, e, x, y, a, size) {
+  const rider = !!e.pos.mounted, al = a.toFixed(3);
+  ctx.fillStyle = `rgba(255,60,50,${al})`;
+  ctx.beginPath();
+  if (rider) {
+    const r = 7 * size;
+    ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,225,200,${al})`; ctx.lineWidth = 1.5;
+    ctx.stroke();
+  } else {
+    ctx.arc(x, y, 5 * size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (e.T.boss) {
+    ctx.strokeStyle = `rgba(255,196,64,${al})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, 11 * size, 0, Math.PI * 2); ctx.stroke();
+  }
+  return rider;
 }
 
 /** The on-screen interface. Returns {update, showScreen, hideScreen, damageFrom, setFps, currentScreen}. */

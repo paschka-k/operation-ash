@@ -249,6 +249,23 @@ const STR = {
     gpuHintRestart: 'Затем полностью закройте и снова откройте браузер.',
     gpuHintClose: 'Понятно',
 
+    // ---- wave 14: riders and bosses in play (the banner line, the boss bar, the kill feed, the enemy bar)
+    newEnemy: 'Новый противник',
+    newEnemies: 'Новые противники',
+    rk_scooterRider: 'самокатчики',
+    rk_skater: 'скейтеры',
+    rk_biker: 'мотоциклисты',
+    rk_bikerGuard: 'мотоциклисты (охрана главаря)',
+    boss: 'БОСС',
+    bossDown: 'повержен',
+    bossHint_bossBiker: 'на тяжёлом мотоцикле, с охраной',
+    bossHint_bossCommander: 'тяжёлая броня, гранаты',
+    feedDismount: 'сбит с транспорта',
+    feedRam: 'наезд',
+    v_scooter: 'Самокат',
+    v_skate: 'Скейт',
+    v_moto: 'Мотоцикл',
+    v_heavyMoto: 'Тяжёлый мотоцикл',
   },
   en: {
     title: 'OPERATION ASH',
@@ -417,6 +434,23 @@ const STR = {
     gpuHintRestart: 'Then close the browser completely and open it again.',
     gpuHintClose: 'Got it',
 
+    // ---- wave 14: riders and bosses in play (the banner line, the boss bar, the kill feed, the enemy bar)
+    newEnemy: 'New enemy',
+    newEnemies: 'New enemies',
+    rk_scooterRider: 'scooter riders',
+    rk_skater: 'skaters',
+    rk_biker: 'bikers',
+    rk_bikerGuard: "bikers (the gang leader's guard)",
+    boss: 'BOSS',
+    bossDown: 'down',
+    bossHint_bossBiker: 'on a heavy motorbike, with his guard',
+    bossHint_bossCommander: 'heavy armour, grenades',
+    feedDismount: 'knocked off',
+    feedRam: 'ran you down',
+    v_scooter: 'Scooter',
+    v_skate: 'Skateboard',
+    v_moto: 'Motorbike',
+    v_heavyMoto: 'Heavy motorbike',
   },
 };
 

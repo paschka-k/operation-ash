@@ -2,17 +2,22 @@
 // around buildings, hides behind cover, peeks out with a short aim warning and
 // shoots in bursts. Accuracy depends on what the player is doing, difficulty
 // rises through three tiers. The figure itself is built in soldier.js.
+// Wave 14: riders come in on vehicles along the loops of the streets (riders.js) and fight on foot once
+// they are off; bosses think with core/boss (the commander also throws grenades).
 
 import { stepBody, standingHeight, raycast, clamp, damp } from '../core/collision.js';
 import { createEnemy, thinkEnemy, enemyHurt, hearNoise, alertNearby, ENEMY_TYPES, enemyParams, botHitChance } from '../core/ai.js';
+import { thinkBoss } from '../core/boss.js';
 import { applyDamage, rayTargets } from '../core/combat.js';
 import { waveComposition, waveTier } from '../core/rules.js';
 import { buildSoldier, MUZZLE } from './soldier.js';
+import { createRiders } from './riders.js';
 
 export { ENEMY_TYPES, enemyParams };
 
 const rnd = Math.random;
 const rr = (a, b) => a + (b - a) * rnd();
+const NONE = Object.freeze([]);
 
 // --------------------------------------------------------------------- Enemy
 // One bot in the scene. The decisions come from core/ai (thinkEnemy), this class
@@ -52,7 +57,9 @@ class Enemy {
   update(dt, world, now) {
     const c = this.core, g = this.game;
     if (!c.alive) { this.updateDeath(dt); return; }
-    const intent = thinkEnemy(c, world, dt, now);
+    // on a vehicle the ride decides everything; off it (shot out, held up) the soldier's own AI takes over
+    if (c.mounted) { g.enemies.riders.ride(this, dt, world, now); return; }
+    const intent = c.T.boss ? thinkBoss(c, world, dt, now) : thinkEnemy(c, world, dt, now);
 
     // movement: smooth the velocity toward what the AI wants
     const slow = c.flinch > 0 ? 0.45 : 1;
@@ -74,7 +81,20 @@ class Enemy {
     if (intent.laser > 0) this.aimLaser(intent.laser);
     if (intent.alert) alertNearby(g.enemies.cores, c, world.player, intent.alert, rnd);
     if (intent.fire) this.shoot(intent.fire.dist, now);
+    if (intent.grenade) this.throwGrenade(intent.grenade);
     this.animate(dt);
+  }
+
+  /**
+   * The commander lobs a grenade at a spot on the ground. It flies and blows up like the player's
+   * (wave 13), but its blast hurts the player, crates and barrels, never a bot, and credits nobody.
+   */
+  throwGrenade(target) {
+    const c = this.core, s = c.scale, sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
+    // from the right hand raised above the shoulder: right of the body is -side in the body frame
+    const fwd = 0.2, side = -0.25;
+    const from = { x: c.x + (sy * fwd + cy * side) * s, y: c.y + 1.75 * s, z: c.z + (cy * fwd - sy * side) * s };
+    this.game.grenades.launchAt(from, target, { owner: 'enemy' });
   }
 
   separate(dt) {
@@ -107,14 +127,17 @@ class Enemy {
     g.fx.laser(this.core.id % 6, m.x, m.y, m.z, eye.x, eye.y - 0.3, eye.z, alpha);
   }
 
-  /** Resolve one shot at the player. Walls block it, near misses crack past the ear. */
-  shoot(dist, now) {
+  /**
+   * Resolve one shot at the player. Walls block it, near misses crack past the ear. acc: the shooter's
+   * accuracy, lower for a rider on the move (rideAim gives P.acc × T.mountedAcc).
+   */
+  shoot(dist, now, acc = this.core.P.acc) {
     const g = this.game, p = g.player, c = this.core, T = c.T;
     const m = this.muzzlePos();
     const eye = p.eyePos();
     const tx = p.pos.x, ty = eye.y - 0.35, tz = p.pos.z;
 
-    const chance = botHitChance(c.P.acc, dist, c.seenTime, {
+    const chance = botHitChance(acc, dist, c.seenTime, {
       speedFrac: p.speedFrac, sprinting: p.sprinting, crouched: p.crouchHeld, airborne: !p.pos.onGround,
     });
     const hit = rnd() < chance;
@@ -214,18 +237,20 @@ class Enemy {
     const res = enemyHurt(c, { source, player: pl, rng: rnd });
     if (res.alert) alertNearby(g.enemies.cores, c, pl, res.alert, rnd);
     if (r.dead) {
-      this.die(zone, source);
+      this.die(zone, source, dir);
       return { killed: true, headshot: zone === 'head' };
     }
     return { killed: false };
   }
 
-  die(zone, source) {
+  die(zone, source, dir = null) {
     const c = this.core, g = this.game;
     c.alive = false;
     c.state = 'dead';
     c.sees = false;
     this.deathT = 0;
+    // killed on the move: the rider drops off and his vehicle crashes on without him
+    if (c.mounted) g.enemies.riders.riderKilled(this, dir);
     g.audio.enemyDeath({ x: c.x, y: c.y + 1, z: c.z });
     g.director.onKill(this, zone, source);
     const r = rnd();
@@ -250,10 +275,38 @@ export class Enemies {
       m.root.visible = false;
       game.gr.scene.add(m.root);
     }
+    // wave 14: the riders' vehicles, wrecks and engine voices
+    this.riders = createRiders(game, this);
+    this._targets = [];
+    this._targetsDirty = true;
+    this.shield = 0;
   }
 
-  /** Targets for core/combat: the living and dead bots (dead ones are skipped there). */
-  get targets() { return this.cores; }
+  /**
+   * Targets for core/combat: the bots (dead ones are skipped there) and the riders' vehicles (kind
+   * 'vehicle'). The list is rebuilt, never changed in place, so a loop over it survives a hit that
+   * changes it. Inside shielded() it is empty: nothing there can reach a bot.
+   */
+  get targets() {
+    if (this.shield > 0) return NONE;
+    if (this._targetsDirty) {
+      this._targets = this.cores.concat(this.riders.targets());
+      this._targetsDirty = false;
+    }
+    return this._targets;
+  }
+
+  /** The set of targets changed (a bot or a vehicle came or went). */
+  touchTargets() { this._targetsDirty = true; }
+
+  /**
+   * Run fn with every bot and vehicle out of reach of whatever it does (the commander's grenade: its blast
+   * goes through props.explode, which hurts the player, crates and barrels, and nobody else then).
+   */
+  shielded(fn) {
+    this.shield++;
+    try { return fn(); } finally { this.shield--; }
+  }
 
   /** Add a bot. opts: {state, lastSeen} for bots that arrive already hunting. */
   spawn(type, x, z, tier = 1, opts = {}) {
@@ -263,8 +316,28 @@ export class Enemies {
     core.y = standingHeight(core.x, core.z, core.radius, this.game.world.colliders);
     this.list.push(e);
     this.cores.push(core);
+    this.touchTargets();
     return e;
   }
+
+  /**
+   * Add a rider on his vehicle (wave 14) at s metres along `route` (core/routes). opts as for spawn, with
+   * hpMult (the wave's health multiplier), which also goes to the vehicle. The core gets mounted = true,
+   * ride (core/ride) and vehicle (its target for core/combat).
+   */
+  spawnRider(type, route, s, tier = 1, opts = {}) {
+    const p = route.sample(s);
+    const core = createEnemy({ ...opts, x: p.x, z: p.z, type, yaw: p.heading }, tier, rnd);
+    const e = new Enemy(this.game, core);
+    this.riders.mount(e, route, s, opts.hpMult);
+    this.list.push(e);
+    this.cores.push(core);
+    this.touchTargets();
+    return e;
+  }
+
+  /** Riders on their vehicles right now (at most maxRiders). */
+  mountedCount() { return this.riders.mounted; }
 
   aliveCount() { let n = 0; for (const c of this.cores) if (c.alive) n++; return n; }
 
@@ -306,16 +379,21 @@ export class Enemies {
         this.list.splice(i, 1);
         const k = this.cores.indexOf(e.core);
         if (k >= 0) this.cores.splice(k, 1);
+        this.touchTargets();
       }
     }
+    this.riders.update(dt);
   }
 
   /** Enemies within radius hear a sound at x,z and go to investigate. */
   noise(x, z, radius) { hearNoise(this.cores, x, z, radius, rnd); }
 
-  /** Nearest living bot on a ray. Returns {t, enemy, zone} or null. */
+  /**
+   * Nearest living bot or vehicle on a ray. Returns {t, enemy, zone} or null; for a vehicle `enemy` is
+   * its view (alive, pos, hp, T.key, P.hp: what the enemy health bar reads) and zone is 'vehicle'.
+   */
   raycast(ox, oy, oz, dx, dy, dz, maxT) {
-    const h = rayTargets({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }, maxT, this.cores);
+    const h = rayTargets({ x: ox, y: oy, z: oz }, { x: dx, y: dy, z: dz }, maxT, this.targets);
     return h ? { t: h.t, enemy: h.target.view, zone: h.zone } : null;
   }
 
@@ -323,6 +401,8 @@ export class Enemies {
     for (const e of this.list) { this.game.gr.scene.remove(e.model.root); e.model.dispose(); }
     this.list.length = 0;
     this.cores.length = 0;
+    this.riders.clear();
+    this.touchTargets();
   }
 }
 

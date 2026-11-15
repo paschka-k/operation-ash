@@ -3,13 +3,17 @@
 //
 //   const grenades = createGrenades(game);   // after the level, the props and the effects exist
 //   grenades.throwFromPlayer();              // shooting calls it when a grenade leaves the hand
+//   grenades.launchAt(from, target, {owner: 'enemy'});   // the commander lobs one at a spot (wave 14)
 //   grenades.update(dt);                     // every simulated frame
 //   grenades.clear();                        // new game, back to the menu
+//
+// An enemy's grenade flies and blows up like the player's, but its blast reaches only the player, the
+// crates and the barrels (and what those barrels set off): no bot, no vehicle, no kill for anyone.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { InstancePool, placement } from '../world/pool.js';
-import { launchGrenade, stepGrenade, grenadeDue } from '../core/grenade.js';
+import { launchGrenade, launchGrenadeAt, stepGrenade, grenadeDue } from '../core/grenade.js';
 import { GRENADE } from '../core/rules.js';
 
 const rnd = Math.random;
@@ -68,6 +72,22 @@ export class Grenades {
   launch(eye, dir, vel = { x: 0, y: 0, z: 0 }) {
     const now = this.game.time * 1000;
     const n = launchGrenade({ eye, dir, vel, now, colliders: this.game.world.colliders });
+    n.owner = 'player';
+    return this._add(n);
+  }
+
+  /**
+   * A grenade lobbed from `from` ({x, y, z}, the thrower's hand) at a spot on the ground `target` ({x, z}):
+   * core/grenade works out the throw. owner 'enemy' (a bot's grenade) blows up without hurting any bot.
+   * Returns the grenade.
+   */
+  launchAt(from, target, { owner = 'enemy' } = {}) {
+    const n = launchGrenadeAt({ from, target, now: this.game.time * 1000 });
+    n.owner = owner;
+    return this._add(n);
+  }
+
+  _add(n) {
     n.rx = rnd() * 6; n.ry = rnd() * 6; n.rz = rnd() * 6;
     n.spin = 8 + rnd() * 6;
     n.handle = this.pool.add(placement(n.x, n.y, n.z, n.rx, n.ry, n.rz));
@@ -108,7 +128,26 @@ export class Grenades {
     const g = this.game, x = n.x, y = n.y, z = n.z;
     g.fx.explosion(x, Math.max(0, n.y - GRENADE.radius), z, 0.85);
     g.audio.explosion(x, y, z);
-    if (g.player.alive) g.props.explode(x, y, z, GRENADE.blastRadius, GRENADE.blastDamage, 'grenade');
+    if (!g.player.alive) return;
+    if (n.owner === 'enemy') this.harmless(() => g.props.explode(x, y, z, GRENADE.blastRadius, GRENADE.blastDamage, 'enemyGrenade'));
+    else g.props.explode(x, y, z, GRENADE.blastRadius, GRENADE.blastDamage, 'grenade');
+  }
+
+  /**
+   * Run fn (an enemy's blast) with every bot and vehicle out of its reach (enemies.shielded). The barrels
+   * it sets off go up a moment later from the props' timers; those timers are wrapped the same way, so a
+   * chain of barrels lit by an enemy hurts no bot either and credits the player with nothing.
+   */
+  harmless(fn) {
+    const g = this.game, timers = g.props.timers, from = timers.length;
+    g.enemies.shielded(fn);
+    for (let i = from; i < timers.length; i++) {
+      const t = timers[i];
+      if (t.spawner || t.harmless) continue;
+      const go = t.fn;
+      t.fn = () => this.harmless(go);
+      t.harmless = true;
+    }
   }
 
   /** Grenades in flight or on the ground, for tests and the HUD. */

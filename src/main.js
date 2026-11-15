@@ -225,6 +225,10 @@ class Game {
     this.audio.weaponLoops(0, false, false);
     this.weapons.lowerSights();
     this.grenades.clear();
+    // wave 14: the wave is over, so no rider is left on a vehicle; the wrecks and any engine voice go
+    this.enemies.riders.clearWrecks();
+    this.enemies.riders.silence();
+    this.hud.bossBar(null);
     this.shop.open();
   }
 
@@ -279,6 +283,7 @@ class Game {
     this.input.unlock();
     this.input.releaseAll();
     this.audio.suspend();
+    this.enemies.riders.silence();  // engine voices stop; riding on after the pause starts them again
     this.weapons.lowerSights();     // the aim button was let go with everything else
     this.hud.showScreen('pause');
     this.shop.closeInventory();
@@ -305,8 +310,9 @@ class Game {
     this.state = 'menu';
     this.input.unlock();
     this.audio.resume();
-    this.enemies.clear();
+    this.enemies.clear();           // riders, vehicles, wrecks and engine voices with them
     this.grenades.clear();
+    this.hud.bossBar(null);
     this.hud.showHud(false);
     this.hud.showScreen('menu');
     this.gr.uniforms.fade.value = 1;
@@ -340,6 +346,10 @@ class Game {
     this.state = 'victory';
     this.audio.victory();
     this.input.unlock();
+    // the last bot fell: the wrecks, the engine voices and the boss bar go with the fight
+    this.enemies.riders.clearWrecks();
+    this.enemies.riders.silence();
+    this.hud.bossBar(null);
     this.deathTimer = setTimeout(() => {
       if (this.state !== 'victory') return;
       this.hud.showResult('victory', this.resultStats());
@@ -503,6 +513,7 @@ class Game {
     return {
       state: this.state, time: +this.time.toFixed(2), wave: d.wave, phase: d.phase, endless: d.endless,
       enemiesAlive: this.enemies.aliveCount(), enemiesLeft: d.remaining(),
+      riders: this.enemies.mountedCount(), wrecks: this.enemies.riders.wrecks.length, vehicles: this.enemies.riders.vehicles.count,
       player: { x: +p.pos.x.toFixed(2), z: +p.pos.z.toFixed(2), health: Math.round(p.health), alive: p.alive },
       weapon: { id: w.cur.id, mag: w.cur.mag, reserve: w.cur.reserve },
       score: d.stats.score, kills: d.stats.kills, quality: this.settings.quality,

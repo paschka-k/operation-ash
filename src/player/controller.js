@@ -43,6 +43,8 @@ export class Player {
     this.eye = new THREE.Vector3();
     this.damageFlash = 0;
     this.stamina = createStamina();   // sprint pool 0..1 (core/stamina.js), shown by the HUD
+    // wave 14: a shove (a motorbike running the player down), m/s added to the wanted velocity, dying out in ~0.4 s
+    this.knock = { vx: 0, vz: 0 };
   }
 
   reset() {
@@ -57,7 +59,21 @@ export class Player {
     this.shakeAmt = 0;
     this.landDip = 0;
     this.damageFlash = 0;
+    this.knock.vx = this.knock.vz = 0;
     resetStamina(this.stamina);
+  }
+
+  /**
+   * Thrown by a hit (a motorbike's ram): vx, vz in m/s. The body takes the push at once and is lifted off
+   * its feet a little; step() keeps adding what is left of the shove to where the player wants to go.
+   */
+  knockBack(vx, vz) {
+    if (!this.alive) return;
+    const b = this.body;
+    this.knock.vx = vx; this.knock.vz = vz;
+    b.vx = vx; b.vz = vz;
+    if (b.onGround) { b.vy = Math.max(b.vy, 2.4); b.onGround = false; }
+    this.shake(0.5);
   }
 
   // names of the controller contract
@@ -148,7 +164,11 @@ export class Player {
     this.sprinting = stepStamina(this.stamina, dt, wantSprint) && b.onGround; // stops when the pool runs dry
     if (wantSprint && !b.onGround) this.sprinting = this.sprinting || false;
     const speed = moveSpeed({ crouched: this.crouchHeld, sprinting: this.sprinting, ads: this.adsFactor, backwards: fwd < 0, weapon: g.weapons.moveMul() });
-    const tx = wx * speed, tz = wz * speed;
+    // a shove (knockBack) rides on top of the wanted velocity and dies out in about 0.4 s
+    const kn = this.knock;
+    kn.vx = damp(kn.vx, 0, 7.5, dt);
+    kn.vz = damp(kn.vz, 0, 7.5, dt);
+    const tx = wx * speed + kn.vx, tz = wz * speed + kn.vz;
 
     if (b.onGround) {
       const accel = this.moving ? 16 : 11;

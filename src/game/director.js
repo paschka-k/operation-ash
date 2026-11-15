@@ -9,6 +9,8 @@ import {
 import { leaveShop, reviveAtCheckpoint } from '../core/waves.js';
 import { MAX_WAVES } from '../core/rules.js';
 import { ECONOMY } from '../core/rules.js';
+import { waveRoster } from '../core/rules.js';
+import { isRider, riderSlotFree, deferSpawn, pickRiderSpawn, payVehicle, newRiderKinds } from '../core/riderlogic.js';
 
 const rnd = Math.random;
 
@@ -17,6 +19,7 @@ export class Director {
     this.game = game;
     this.core = createGame(seed);
     this.maxWaves = MAX_WAVES;
+    this.seenRiders = new Set();   // kinds of rider this game has announced (wave 14)
   }
 
   get now() { return this.game.time * 1000; }
@@ -35,6 +38,10 @@ export class Director {
     restart(this.core, this.now);
     this.saveArsenal();
     this.shopIn = 0;
+    this.seenRiders.clear();
+    this.bossIntro = null;
+    this.bannerUntil = 0;
+    this.game.hud.bossBar(null);
     this.game.hud.banner(this.game.t('wave') + ' 1', '', 2.5);
   }
 
@@ -62,6 +69,8 @@ export class Director {
     this.game.weapons.restore(cp.arsenal);
     this.shopIn = 0;
     const g = this.game;
+    this.bossIntro = null;
+    g.hud.bossBar(null);           // the wave starts again: its boss comes back with full health
     g.hud.banner(g.t('wave') + ' ' + cp.wave, g.t('revived', { n: this.core.deaths + 1 }), 2.6);
     return true;
   }
@@ -92,6 +101,7 @@ export class Director {
     if (g.state !== 'playing') return;
     const now = this.now;
     for (const ev of tickGame(this.core, dt, now)) this.handle(ev);
+    this._bossIntro();
     // countdown to the next wave
     if (this.core.phase === 'intermission' && this.core.wave > 0) {
       g.hud.setBreak(Math.max(0, Math.ceil((this.core.intermissionUntil - now) / 1000)));
@@ -103,25 +113,34 @@ export class Director {
   handle(ev) {
     const g = this.game;
     switch (ev.type) {
-      case 'waveStart':
-        g.hud.banner(g.t('wave') + ' ' + ev.wave, ev.endless ? g.t('endless') : '', 2.6);
+      case 'waveStart': {
+        const news = this.riderNews(ev.wave, ev.endless);
+        const sub = [ev.endless ? g.t('endless') : '', news].filter(Boolean).join(' · ');
+        const secs = news ? 3.6 : 2.6;
+        g.hud.banner(g.t('wave') + ' ' + ev.wave, sub, secs);
+        this.bannerUntil = this.now + secs * 1000;
         g.audio.waveStart();
         this.saveArsenal();
         break;
+      }
       case 'spawn': {
+        if (isRider(ev.enemyType)) { this.spawnRider(ev); break; }
         const s = this.pickSpawn();
         // newly arrived soldiers know roughly where the player is
-        g.enemies.spawn(ev.enemyType, s.x, s.z, ev.tier, {
+        const e = g.enemies.spawn(ev.enemyType, s.x, s.z, ev.tier, {
           state: 'chase',
           lastSeen: { x: g.player.pos.x + (rnd() - 0.5) * 14, z: g.player.pos.z + (rnd() - 0.5) * 14 },
           hpMult: ev.hpMult,
         });
+        if (e.T.boss) this.announceBoss(e);
         break;
       }
       case 'waveCleared':
         g.hud.banner(g.t('waveClear'), '', 3);
         g.audio.waveClear();
         g.props.restoreSpawners();   // the break restores every supply point
+        g.enemies.riders.clearWrecks();
+        g.hud.bossBar(null);
         this.shopIn = ECONOMY.shopDelayMs / 1000;   // seconds of play, counted down in update()
         break;
       case 'victory':
@@ -131,10 +150,77 @@ export class Director {
     }
   }
 
-  /** A bot died: points, streak, kill feed. */
+  // ---- wave 14: riders and bosses
+  /**
+   * The line under the wave banner that names the kinds of rider this game meets for the first time.
+   * It follows the wave's real roster: bikers first ride in on wave 5 as the gang leader's guard, two waves
+   * before their own wave 7, so the game names them there, as his guard, and wave 7 brings nothing new.
+   */
+  riderNews(wave, endless) {
+    const g = this.game, fresh = newRiderKinds(waveRoster(wave, endless), this.seenRiders);
+    if (!fresh.length) return '';
+    for (const k of fresh) this.seenRiders.add(k.kind);
+    const names = fresh.map((k) => g.t(k.guard ? 'rk_bikerGuard' : 'rk_' + k.kind));
+    return g.t(fresh.length > 1 ? 'newEnemies' : 'newEnemy') + ': ' + names.join(', ');
+  }
+
+  /**
+   * A rider's spawn event: he enters on a loop, out of the player's sight and at least 25 m away, while
+   * fewer than maxRiders ride. Otherwise the spawn goes back into the wave's queue (deferSpawn keeps the
+   * alive count right): behind the foot soldiers when every rider slot is taken, as the very next spawn
+   * when there is no hidden point right now (the boss's guard stays right behind him).
+   */
+  spawnRider(ev) {
+    const g = this.game, c = this.core, p = g.player;
+    if (!riderSlotFree(g.enemies.mountedCount(), c.wave, c.endless)) { deferSpawn(c, ev.enemyType, false); return null; }
+    const eye = p.eyePos(), colliders = g.world.colliders;
+    const visible = (x, z) => lineOfSight(colliders, x, 1.6, z, eye.x, eye.y, eye.z);
+    const at = pickRiderSpawn(g.enemies.riders.routes, { x: p.pos.x, z: p.pos.z }, visible, { rng: rnd, occupied: g.enemies.riders.occupied() });
+    if (!at) { deferSpawn(c, ev.enemyType, true); return null; }
+    const e = g.enemies.spawnRider(ev.enemyType, at.route, at.s, ev.tier, { hpMult: ev.hpMult, lastSeen: { x: p.pos.x, z: p.pos.z } });
+    if (e.T.boss) this.announceBoss(e);
+    return e;
+  }
+
+  /**
+   * A boss enters: his health bar on top of the screen at once, his banner and sound as soon as the wave's
+   * own banner (with its line about new riders) has been read: the boss opens his wave half a second in.
+   */
+  announceBoss(e) {
+    this.game.hud.bossBar(e);
+    this.bossIntro = { e, at: Math.max(this.now, (this.bannerUntil || 0) - 300) };
+  }
+
+  _bossIntro() {
+    const b = this.bossIntro, g = this.game;
+    if (!b || this.now < b.at) return;
+    this.bossIntro = null;
+    if (!b.e.alive) return;
+    g.hud.banner(g.t('boss') + ': ' + g.t(b.e.T.key), g.t('bossHint_' + b.e.core.type), 3);
+    g.audio.bossIntro();
+  }
+
+  /** A vehicle was shot out from under its rider: its score in points and money, no kill. */
+  onVehicleDestroyed(enemy, kind) {
+    const g = this.game, pts = payVehicle(this.core, kind);
+    g.hud.killfeed(g.t(enemy.T.key), false, 'dismount', pts, 0);
+    return pts;
+  }
+
+  /** A motorbike ran the player down: a line in the feed (the damage itself went to the player). */
+  onRam(enemy) {
+    const g = this.game;
+    g.hud.killfeed(g.t(enemy.T.key), false, 'vehicle', null, 0);
+  }
+
+  /** A bot died: points, streak, kill feed; a boss gets a line of his own and his bar goes. */
   onKill(enemy, zone, source) {
     const g = this.game;
     const r = enemyKilled(this.core, { headshot: zone === 'head', base: enemy.T.score, source }, this.now);
     g.hud.killfeed(g.t(enemy.T.key), zone === 'head', source, r.points, r.streak);
+    if (enemy.T.boss) {
+      g.hud.bossDown(g.t(enemy.T.key));
+      g.hud.bossBar(null);
+    }
   }
 }
