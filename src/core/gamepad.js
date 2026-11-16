@@ -133,10 +133,11 @@ export function padEdges(prevHeld, held) {
 
 /**
  * The L3 sprint: a press starts it while the stick pushes forward; it ends when the stick stops
- * pushing forward or the stamina runs dry (locked), and then needs a new press.
+ * pushing forward, the stamina runs dry (locked) or the player aims or fires (busy: LT or RT held),
+ * and then needs a new press. While busy a press does not start it either.
  */
-export function stepSprintLatch(latched, pressed, forward, locked) {
-  if (locked || !(forward >= GAMEPAD.sprintKeep)) return false;
+export function stepSprintLatch(latched, pressed, forward, locked, busy = false) {
+  if (locked || busy || !(forward >= GAMEPAD.sprintKeep)) return false;
   return latched || pressed;
 }
 

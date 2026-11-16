@@ -16,8 +16,10 @@
 // health he has left: the same core, so no kill is counted; the vehicle pays its own score (director).
 // A rider held up by a blocker for RIDE.dismountSecs steps off and fights on foot; his vehicle stays
 // standing where it stopped, whole, without a crash. Wrecks and vehicles left standing have no collider
-// and stop nobody on foot, but they are in the riders' way like any blocker and no rider enters on top of
-// one; they go away after wreckSecs or at the wave's end.
+// and stop nobody on foot, but they are in the riders' way and no rider enters on top of one: once they
+// stand still the riders swerve round them where the street has room (_room casts the rays, core/ride
+// stepRide steers), and stop behind them where it has none. They go away after wreckSecs or at the
+// wave's end.
 
 import { createRide, stepRide, rideRam, rideAim, crashRide, leaveRide } from '../core/ride.js';
 import { levelRoutes } from '../core/routes.js';
@@ -30,6 +32,7 @@ import { setRidePose } from './soldier.js';
 
 const rnd = Math.random;
 const NEAR = 30;                 // metres: foot soldiers further than this from a vehicle cannot be in its way
+const ARENA = 44.3;              // metres: the playable square, |x| and |z| (as squad.js clamps the bots)
 
 /** The vehicle as the rest of the game sees a bot: what the enemy health bar and the hits read. */
 class VehicleView {
@@ -85,8 +88,9 @@ export class Riders {
       id: 'vehicle-' + c.id, kind: 'vehicle', x: ride.x, y: ride.y, z: ride.z, yaw: ride.heading,
       length: V.length, width: V.width, height: V.height, alive: true, hp: vehicleHp(kind, hpMult), armor: V.armor, view: null,
     };
-    const m = { enemy, core: c, kind, V, ride, target, view: null, handle: this.vehicles.add(kind), voice: null, sees: false };
+    const m = { enemy, core: c, kind, V, ride, target, view: null, handle: this.vehicles.add(kind), voice: null, sees: false, room: null };
     m.view = target.view = new VehicleView(this, m);
+    m.room = (off, s0, s1, hw) => this._room(ride.route, off, s0, s1, hw);
     c.mounted = true;
     c.ride = ride;
     c.vehicle = target;
@@ -107,7 +111,7 @@ export class Riders {
     t.x = ride.x; t.y = ride.y; t.z = ride.z; t.yaw = ride.heading;
     this.vehicles.place(m.handle, ride.x, ride.y, ride.z, ride.heading, ride.lean, 0);
     const M = m.enemy.model;
-    setRidePose(M, m.V.stance);
+    setRidePose(M, m.V.stance, 0, c.aimTwist || 0);
     // the yaw first, then the lean about the rider's own length; he tips with the vehicle about the
     // ground under it (the vehicle's own pivot), so his body frame stays on the deck or the seat
     const sl = Math.sin(ride.lean) * m.V.seatY;
@@ -118,22 +122,32 @@ export class Riders {
 
   /**
    * What stands in the lane of `m`: the player (flagged: a motorbike goes for him instead of braking,
-   * core/ride stepRide), the other vehicles on its loop, wrecks and vehicles left standing, foot soldiers
-   * near it.
+   * core/ride stepRide), the other vehicles on its loop, wrecks and vehicles left standing (flagged still
+   * once they stand: the riders swerve round them where there is room), foot soldiers near it.
+   * A wreck's footprint is the box it lies in: along the loop half its length, across it half its width,
+   * or, fallen on its side, its height reaching out to the side it fell to.
    */
   _blockersFor(m) {
     const B = this._blockers, pool = this._pool, ride = m.ride, g = this.game;
     let n = 0;
-    const add = (x, z, r, player = false) => {
-      const b = pool[n] || (pool[n] = { x: 0, z: 0, r: 0, player: false });
-      b.x = x; b.z = z; b.r = r; b.player = player;
+    const add = (x, z, r, l = r, player = false, still = false) => {
+      const b = pool[n] || (pool[n] = { x: 0, z: 0, r: 0, l: 0, player: false, still: false });
+      b.x = x; b.z = z; b.r = r; b.l = l; b.player = player; b.still = still;
       B[n++] = b;
     };
     const near = (x, z) => (x - ride.x) * (x - ride.x) + (z - ride.z) * (z - ride.z) < NEAR * NEAR;
     const p = g.player;
-    if (p.alive && p.pos.y < ride.y + 1.2) add(p.pos.x, p.pos.z, p.pos.radius, true);
+    if (p.alive && p.pos.y < ride.y + 1.2) add(p.pos.x, p.pos.z, p.pos.radius, p.pos.radius, true);
     for (const o of this.mounts) if (o !== m && o.ride.route === ride.route) add(o.ride.x, o.ride.z, o.V.length / 2);
-    for (const w of this.wrecks) if (near(w.ride.x, w.ride.z)) add(w.ride.x, w.ride.z, w.V.length / 2);
+    for (const w of this.wrecks) {
+      const wr = w.ride, V = w.V;
+      if (!near(wr.x, wr.z)) continue;
+      // lean > 0 tips its top to the right of its heading, (cos h, -sin h)
+      const tip = Math.sin(wr.lean) * V.height / 2;
+      const x = wr.x + Math.cos(wr.heading) * tip, z = wr.z - Math.sin(wr.heading) * tip;
+      const across = Math.abs(Math.cos(wr.lean)) * V.width / 2 + Math.abs(tip);
+      add(x, z, across, V.length / 2, false, wr.speed === 0);
+    }
     for (const o of this.enemies.cores) {
       if (!o.alive || o.mounted) continue;
       if (near(o.x, o.z)) add(o.x, o.z, o.radius);
@@ -142,13 +156,45 @@ export class Riders {
     return B;
   }
 
+  /**
+   * Is there room for a vehicle hw metres either side of its middle to drive `off` metres right of its
+   * loop (left below zero) from s0 to s1? A ray at the height of the vehicles' bodies goes out every
+   * metre from the loop, across the whole swerve and the vehicle's far side, plus a margin; nothing solid
+   * may be in its way (walls, cars, concrete blocks, crates and barrels). The loops themselves are clear.
+   */
+  _room(route, off, s0, s1, hw) {
+    const cols = this.game.world.colliders, p = this._probe, side = off < 0 ? -1 : 1;
+    const reach = Math.abs(off) + hw + RIDE.passMargin;
+    for (let s = s0; ; s += 1) {
+      const d = Math.min(s, s1);
+      route.sample(d, p);
+      const dx = Math.cos(p.heading) * side, dz = -Math.sin(p.heading) * side;
+      if (raycast(cols, p.x, 0.45, p.z, dx, 0, dz, reach, { noGround: true })) return false;
+      const ex = p.x + dx * reach, ez = p.z + dz * reach;
+      if (Math.abs(ex) > ARENA || Math.abs(ez) > ARENA) return false;
+      if (d >= s1) return true;
+    }
+  }
+
   /** One frame of a rider on his vehicle: drive, run the player down, shoot what he sees. */
   ride(enemy, dt, world, now) {
     const c = enemy.core, m = c.mount, g = this.game, p = g.player;
     if (!m) { c.mounted = false; return; }
     const ride = m.ride;
-    const res = stepRide(ride, dt, this._blockersFor(m));
+    const res = stepRide(ride, dt, this._blockersFor(m), m.room);
     c.flinch = Math.max(0, c.flinch - dt);
+
+    // the gun: he looks for the player a few times a second, rideAim decides the bursts and turns his
+    // upper body towards the player (c.aimTwist), which _sit poses before the muzzle is read
+    c.senseT -= dt;
+    if (c.senseT <= 0) {
+      c.senseT = 0.1 + rnd() * 0.06;
+      const eye = world.player.eye, dx = p.pos.x - ride.x, dz = p.pos.z - ride.z;
+      m.sees = p.alive && dx * dx + dz * dz < c.T.sight * c.T.sight &&
+        lineOfSight(g.world.colliders, ride.x, ride.y + m.V.seatY + 1.55 * c.scale, ride.z, eye.x, eye.y - 0.2, eye.z);
+    }
+    const aim = rideAim(ride, c, { x: p.pos.x, z: p.pos.z, visible: m.sees, alive: p.alive }, now, rnd);
+
     this._sit(m);
     const since = (now - c.lastFiredAt) / 1000;
     enemy.model.gun.position.copy(enemy.model.gunRest).addScaledVector(enemy.model.gunBack, since < 0.08 ? 0.03 : 0);
@@ -168,15 +214,6 @@ export class Riders {
       }
     }
 
-    // the gun: he looks for the player a few times a second, rideAim decides the bursts
-    c.senseT -= dt;
-    if (c.senseT <= 0) {
-      c.senseT = 0.1 + rnd() * 0.06;
-      const eye = world.player.eye, dx = p.pos.x - c.x, dz = p.pos.z - c.z;
-      m.sees = p.alive && dx * dx + dz * dz < c.T.sight * c.T.sight &&
-        lineOfSight(g.world.colliders, c.x, c.y + 1.55 * c.scale, c.z, eye.x, eye.y - 0.2, eye.z);
-    }
-    const aim = rideAim(ride, c, { x: p.pos.x, z: p.pos.z, visible: m.sees, alive: p.alive }, now, rnd);
     if (aim.cue) g.audio.telegraph(enemy.muzzlePos());
     if (aim.laser > 0) enemy.aimLaser(aim.laser);
     if (aim.fire) enemy.shoot(aim.fire.dist, now, aim.fire.acc);
@@ -233,6 +270,7 @@ export class Riders {
     this._wreck(m, dir);
     c.mounted = false;
     c.mount = null;
+    c.aimTwist = 0;
     c.y = standingHeight(c.x, c.z, c.radius, this.game.world.colliders);
     const M = enemy.model;
     M.root.rotation.order = 'XYZ';
@@ -291,6 +329,7 @@ export class Riders {
     const c = enemy.core, g = this.game, p = g.player;
     c.mounted = false;
     c.mount = null;
+    c.aimTwist = 0;
     c.x = x; c.z = z;
     c.y = standingHeight(x, z, c.radius, g.world.colliders);
     c.vx = c.vy = c.vz = 0;

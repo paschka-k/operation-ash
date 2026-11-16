@@ -227,7 +227,7 @@ const STR = {
 
     // ---- wave 13: weapons and grenades
     w_smg: 'Пистолет-пулемёт U-4',
-    w_carbine: 'Автомат HR-12',
+    w_carbine: 'Боевая винтовка HR-12',
     w_sniper: 'Снайперская винтовка LR-4',
     w_lmg: 'Пулемёт LM-6',
     w_minigun: 'Миниган RG-6',
@@ -326,7 +326,7 @@ const STR = {
     headshot: 'Headshot',
     streak: 'Streak',
     w_pistol: 'P-9 Pistol',
-    w_rifle: 'AR-7 Rifle',
+    w_rifle: 'AR-7 Assault Rifle',
     w_shotgun: 'S-12 Shotgun',
     e_grunt: 'Grunt',
     e_rusher: 'Rusher',
@@ -416,7 +416,7 @@ const STR = {
 
     // ---- wave 13: weapons and grenades
     w_smg: 'U-4 SMG',
-    w_carbine: 'HR-12 Rifle',
+    w_carbine: 'HR-12 Battle Rifle',
     w_sniper: 'LR-4 Sniper Rifle',
     w_lmg: 'LM-6 Machine Gun',
     w_minigun: 'RG-6 Minigun',

@@ -8,7 +8,8 @@
 //   r.nearest(x, z)  -> {s, dist}                    closest point of the loop to (x, z)
 //
 // heading follows the yaw convention of the game, atan2(dx, dz). curvature is 1 / radius, positive
-// where the loop turns towards +heading (from +x towards +z), zero on the straights.
+// where the loop turns from +x towards +z, which lowers the heading (from +z it turns towards -x), zero
+// on the straights.
 //
 // The loops are data, not a path search: the bots' grid of 0.5 m cells is made for people on foot.
 // Every loop keeps at least 0.8 m from the solid colliders of the level that are taller than 0.42 m;

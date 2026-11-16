@@ -158,7 +158,9 @@ export class GamepadInput {
     const g = this.game, inp = g.input, s = g.settings;
     const want = new Set();
     for (const [i, a] of HELD_ACTIONS) if (r.held[i] && !this.mute.has(i)) want.add(a);
-    this.latch = stepSprintLatch(this.latch, fresh.includes(BTN.L3), r.move.y, g.player.stamina && g.player.stamina.locked);
+    // LT or RT pulled ends the latched sprint, as the aim button and the trigger stop a held one
+    this.latch = stepSprintLatch(this.latch, fresh.includes(BTN.L3), r.move.y, g.player.stamina && g.player.stamina.locked,
+      want.has('aim') || want.has('fire'));
     if (this.latch) want.add('sprint');
     for (const a of this.actions) if (!want.has(a)) inp.setVirtual(a, false);
     for (const a of want) if (!this.actions.has(a)) inp.setVirtual(a, true);
@@ -269,7 +271,13 @@ export class GamepadInput {
   /**
    * The next element in a direction: the nearest row (or column) of boxes that way, then the box in
    * it closest to the current one. Rows first, so a small check box at the left edge of a form is
-   * not skipped for a wide control further down. Up and down wrap around.
+   * not skipped for a wide control further down.
+   * Up and down stay inside the current element's own group first: the smallest box of the page around
+   * it that holds anything that way. In the shop the weapons and the gear are two columns whose rows do
+   * not line up; without this, down went weapon, gear, weapon, gear. Out of the last row of a group the
+   * move goes on to the nearest row of the screen; up and down wrap around.
+   * Left and right stay in the row; with nothing beside it in the row, they go to the box that way whose
+   * row is nearest (from the first weapon to the gear column).
    */
   neighbour(cur, dir, els) {
     const i0 = els.indexOf(cur);
@@ -280,18 +288,31 @@ export class GamepadInput {
     }
     const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
     const vertical = dir === 'up' || dir === 'down';
-    const cands = [];
-    let nearest = Infinity;
+    let cands = [], aside = [];
     for (const el of els) {
       if (el === cur) continue;
       const b = el.getBoundingClientRect();
       const dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
       const main = dir === 'up' ? -dy : dir === 'down' ? dy : dir === 'left' ? -dx : dx;
       if (main <= 4) continue;
-      if (!vertical && Math.abs(dy) > Math.max(a.height, b.height)) continue; // left and right stay in the row
-      cands.push({ el, main, side: Math.abs(vertical ? dx : dy) });
-      nearest = Math.min(nearest, main);
+      const c = { el, main, side: Math.abs(vertical ? dx : dy) };
+      if (!vertical && Math.abs(dy) > Math.max(a.height, b.height)) { aside.push(c); continue; } // another row
+      cands.push(c);
     }
+    if (vertical) {
+      for (let box = cur.parentElement; box && box !== document.body; box = box.parentElement) {
+        const inside = cands.filter((c) => box.contains(c.el));
+        if (inside.length) { cands = inside; break; }
+      }
+    } else if (!cands.length && aside.length) {
+      // nothing in the row: the box that way whose row is nearest, then the nearest of those
+      const row = Math.min(...aside.map((c) => c.side));
+      cands = aside.filter((c) => c.side <= row + 4).map((c) => ({ ...c, side: c.main }));
+      const near = Math.min(...cands.map((c) => c.main));
+      return cands.find((c) => c.main === near).el;
+    }
+    let nearest = Infinity;
+    for (const c of cands) nearest = Math.min(nearest, c.main);
     const band = Math.max(12, (vertical ? a.height : a.width) * 0.5);
     let best = null;
     for (const c of cands) if (c.main <= nearest + band && (!best || c.side < best.side)) best = c;

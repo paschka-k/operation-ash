@@ -29,9 +29,9 @@ Rebuild the single file with `npm run build`.
 | C | crouch |
 | Space | jump |
 | Mouse, left button | fire |
-| Mouse, right button | aim down sights |
+| Mouse, right button | aim down sights (stops a sprint) |
 | R | reload |
-| 1 2 3, mouse wheel, Q | pistol, rifle, shotgun; next; last used |
+| 1 … 9, mouse wheel, Q | weapon slots (the weapons you own); next; last used |
 | G (gamepad RB) | grenade |
 | I | inventory |
 | M | big map |
@@ -40,7 +40,8 @@ Rebuild the single file with `npm run build`.
 
 ## What is in the game
 
-- Three weapons from one data table: semi-automatic pistol, automatic rifle, pump shotgun with eight pellets.
+- Nine weapons from one data table: P-9 pistol and AR-7 assault rifle to start with; S-12 pump shotgun, U-4 SMG, HR-12 battle rifle, LR-4 sniper rifle, LM-6 machine gun, RG-6 minigun and FL-2 flamethrower from the shop between waves, with upgrades, armour and grenades.
+- Enemies on scooters, skateboards and motorbikes ride the loops of the streets from wave 3, swerve round wrecks and fight on foot once shot off; bosses on waves 5 and 10.
 - A 90 by 90 m block: ten ruined buildings with furnished interiors, streets, barricades, containers, a sniper perch on a container roof, and more than five thousand small instanced objects.
 - Ten waves of bots, wave N has 3+2(N-1) soldiers, at most 12 alive at once, three difficulty tiers. Bots take cover, peek, and show a laser and a sound before a burst. After wave 10 you can continue in endless mode.
 - Health regenerates after five quiet seconds. Crates break, barrels explode, medkits and ammo boxes respawn.

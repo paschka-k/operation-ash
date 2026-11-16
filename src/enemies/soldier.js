@@ -310,12 +310,14 @@ function footPose(model) {
  * stance null puts him back on foot (also done by itself on the first frame the walk moves his legs
  * again, so a rider who gets off walks normally even if nobody calls it).
  *
- * The chest, the arms and the gun keep the standing aim (MUZZLE stays true). A seated rider's hip bone
- * keeps its standing height, so the hit zones of core/combat stay on him; core/rules VEHICLES.seatY puts
- * his body frame at the deck or under the seat. lean: the vehicle's lean (the same number that goes to
- * vehicles.place); the rider tips with it about the ground under the vehicle.
+ * The chest, the arms and the gun keep the standing aim. A seated rider's hip bone keeps its standing
+ * height, so the hit zones of core/combat stay on him; core/rules VEHICLES.seatY puts his body frame at
+ * the deck or under the seat. lean: the vehicle's lean (the same number that goes to vehicles.place); the
+ * rider tips with it about the ground under the vehicle. twist: radians the upper body (chest, head,
+ * arms, gun) turns about the vertical from the heading, towards what he aims at (core/ride rideAim
+ * aimTwist); the legs stay on the vehicle.
  */
-export function setRidePose(model, stance, lean = 0) {
+export function setRidePose(model, stance, lean = 0, twist = 0) {
   if (!stance || !RIDE_POSE[stance]) { if (model.ride) footPose(model); return; }
   const T = ENEMY_TYPES[model.type] || {};
   const P = RIDE_POSE[stance];
@@ -327,8 +329,9 @@ export function setRidePose(model, stance, lean = 0) {
   model.hips.position.set(a * c + b * s, g - a * s + b * c, 0);
   model.hips.rotation.set(0, P.side, -lean, 'ZYX');
   applyLegs(model, P);
-  // the chest turns back from the pelvis to the standing aim: Ry(-side) Rx(lean forward) Ry(stance yaw)
-  _rq.setFromAxisAngle(_ry, -P.side).multiply(_rq2.setFromAxisAngle(_rx, P.torso));
+  // the chest turns back from the pelvis to the standing aim and on to the target:
+  // Ry(twist - side) Rx(lean forward) Ry(stance yaw)
+  _rq.setFromAxisAngle(_ry, twist - P.side).multiply(_rq2.setFromAxisAngle(_rx, P.torso));
   model.torso.quaternion.copy(_rq.multiply(_rq2.setFromAxisAngle(_ry, model.torsoYaw)));
   if (!model.ride) {
     model.ride = { l: 0, r: 0 };
@@ -351,10 +354,23 @@ const STANCE = {
   smg: { gun: [0, 1.38, 0.36], yaw: 0, right: [-0.012, -0.065, -0.03], left: [0.004, -0.07, 0.125], tip: [0, 0.012, 0.25] },
 };
 
-/** Muzzle of each weapon in the body frame, for tracers, the aim laser and sound. */
+/** Muzzle of each weapon in the body frame of the rest pose. */
 export const MUZZLE = Object.fromEntries(Object.entries(STANCE).map(([k, s]) => [k, {
   side: s.gun[0] + s.tip[0], up: s.gun[1] + s.tip[1], fwd: s.gun[2] + s.tip[2],
 }]));
+
+/**
+ * Where the muzzle of the soldier's gun is in the world right now, for tracers, the aim laser and
+ * sound: the tip of the gun bone as the current pose holds it (crouched, flinching, riding, turned to
+ * aim), not a formula of the rest pose. Updates the model's world matrices first. Returns out {x, y, z}.
+ */
+const _mv = new THREE.Vector3();
+export function muzzleOf(model, out = {}) {
+  model.root.updateMatrixWorld(true);
+  _mv.copy(model.tip).applyMatrix4(model.gun.matrixWorld);
+  out.x = _mv.x; out.y = _mv.y; out.z = _mv.z;
+  return out;
+}
 
 /** Turn shoulder and elbow so the hand lands on target. Everything is in the torso frame. */
 function solveArm(arm, target, pole) {
@@ -398,6 +414,7 @@ function makeRig(weapon) {
   return {
     hips, legs, torso, head, arms, gun,
     torsoYaw: st.yaw,
+    tip: new THREE.Vector3(...st.tip),                                       // the muzzle in the gun bone's frame
     gunRest: gun.position.clone(),
     gunBack: new THREE.Vector3(0, 0, -1).applyQuaternion(gun.quaternion),   // recoil direction in the torso frame
     bones: [hips, legs[0].hip, legs[0].knee, legs[1].hip, legs[1].knee, torso, head, arms[0].shoulder, arms[0].elbow, arms[1].shoulder, arms[1].elbow, gun],

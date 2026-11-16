@@ -128,6 +128,9 @@ test('L3 sprint: starts on a press while pushing forward, ends when the push or 
   assert.equal(stepSprintLatch(false, false, 1, false), false, 'needs a new press');
   assert.equal(stepSprintLatch(true, false, 1, true), false, 'stamina ran dry');
   assert.equal(stepSprintLatch(false, true, 0, false), false, 'standing still');
+  assert.equal(stepSprintLatch(true, false, 1, false, true), false, 'LT or RT ends it');
+  assert.equal(stepSprintLatch(false, true, 1, false, true), false, 'and a press while aiming does not start it');
+  assert.equal(stepSprintLatch(false, false, 1, false, false), false, 'let go of LT: it needs a new press');
 });
 
 test('menu direction: D-pad wins, the stick has hysteresis', () => {

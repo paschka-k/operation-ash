@@ -516,10 +516,15 @@ export function absorbDamage(armor, amount) {
  * (scale of bossBiker).
  *
  * ramSpeed: from this speed a touch knocks the player down (Infinity: never), ramDamage once per
- * ramCooldown seconds. A vehicle with a finite ramSpeed does not brake for the player in its lane: it
+ * ramCooldown seconds; from RIDE.bumpSpeed up to ramSpeed a touch shoves him with a share of ramDamage in
+ * proportion to the speed. A vehicle with a finite ramSpeed does not brake for the player in its lane: it
  * goes for him at ramSpeed at least, runs him down and rides on (core/ride stepRide); the others stop
  * for him. wreckSecs: a wreck lies in the street this long (or until the wave is cleared).
  * score: points and money for shooting the vehicle out from under its rider.
+ * grip, maxLean (optional, else RIDE's): m/s² of sideways pull it holds in a turn and how far it leans.
+ * A motorbike holds more than a scooter: enough to take the tightest turn of the level's loops (radius
+ * 2.38 m, core/routes) at its ramSpeed, so it never has to go faster than its grip to run the player
+ * down there; its maxLean is about atan(grip / 9.81), the lean that grip asks for.
  */
 export const VEHICLES = {
   scooter: {
@@ -532,28 +537,42 @@ export const VEHICLES = {
   },
   moto: {
     hp: 140, armor: 0.8, speed: 11, accel: 5, brake: 8, length: 2.05, width: 0.8, height: 1.15, seatY: -0.1, stance: 'seat',
-    ramSpeed: 5, ramDamage: 35, ramCooldown: 3, wreckSecs: 20, score: 125,
+    ramSpeed: 5, ramDamage: 35, ramCooldown: 3, wreckSecs: 20, score: 125, grip: 11, maxLean: 0.85,
   },
   heavyMoto: {
     hp: 320, armor: 0.6, speed: 9.5, accel: 4, brake: 7, length: 2.4, width: 0.95, height: 1.3, seatY: -0.25, stance: 'seat',
-    ramSpeed: 4, ramDamage: 50, ramCooldown: 3.5, wreckSecs: 20, score: 300,
+    ramSpeed: 4, ramDamage: 50, ramCooldown: 3.5, wreckSecs: 20, score: 300, grip: 7.5, maxLean: 0.66,
   },
 };
 
 /**
  * How a vehicle drives its loop (core/ride.js).
  *   grip          m/s² of sideways pull a vehicle holds in a turn: the speed in a turn of radius r is sqrt(grip × r)
+ *                 (a vehicle's own VEHICLES grip comes first)
  *   substep       metres: a move is cut into steps no longer than this
  *   gap           metres kept between a vehicle's nose and a blocker it stops for
  *   lane          metres added to half the vehicle's width and the blocker's radius: closer to the loop, it is in the way
  *   stuckSpeed    m/s: held by a blocker and slower than this, the vehicle counts as blocked
  *   dismountSecs  blocked this long, the rider gets off and fights on foot
  *   touch         metres of slack in the ram test
- *   knockShare    the player is thrown at this share of the vehicle's speed, at most knockMax m/s
+ *   bumpSpeed     m/s: a motorbike slower than this when it touches the player does not hurt him; it does
+ *                 not go for him when it cannot reach this speed before it touches him (it stops instead)
+ *   knockShare    the player is thrown at this share of the vehicle's speed, at least knockMin, at most
+ *                 knockMax m/s (a shove at a crawl still puts him out of the lane)
+ *   swerve        metres sideways per metre along a vehicle swerves round a wreck or a vehicle left standing
+ *   swerveMax     metres off its loop a swerve may take a vehicle, at most
+ *   shuffle       m/s sideways a vehicle stopped right behind what it swerves round edges out on the spot
+ *   passMargin    metres more than the lane's clearance a swerve keeps from what it passes, and from walls
+ *   passRetry     seconds before a vehicle that found no room for a swerve looks again
+ *   steerRate     1/s: how fast the vehicle's nose follows the slope of its swerve (for the view)
  *   crashFriction m/s² a wreck slows down with while it slides along its lane
  *   crashDrift    metres a wreck slides sideways out of the middle of its lane, at most
  *   fallSecs      a wreck lies on its side after this long
- *   aimCone       radians either side of the heading a rider can shoot to
+ *   aimCone       radians either side of the heading a rider can shoot to; his upper body turns that far
+ *                 from the heading towards what he aims at
+ *   twistRate     radians a second the rider's upper body turns at, towards the player or back to the road
+ *   twistSlack    radians the upper body may still be off the line to the player when a shot leaves:
+ *                 further off, the shot waits (no bullet leaves a gun that points elsewhere)
  *   maxLean       radians a vehicle leans into a turn, at most
  *   reloadSecs    seconds a rider takes to reload on the move
  *   dismountReact seconds before a rider who just got onto his feet reacts: thrown off a vehicle shot out
@@ -561,9 +580,10 @@ export const VEHICLES = {
  *   thrownFlinch  seconds a rider thrown off his vehicle staggers
  */
 export const RIDE = {
-  grip: 5, substep: 0.25, gap: 0.1, lane: 0.15, stuckSpeed: 0.5, dismountSecs: 3, touch: 0.15,
-  knockShare: 0.7, knockMax: 9, crashFriction: 6, crashDrift: 0.4, fallSecs: 0.6, aimCone: 1.9, maxLean: 0.55,
-  reloadSecs: 1.8, dismountReact: { thrown: 0.7, held: 0.3 }, thrownFlinch: 0.5,
+  grip: 5, substep: 0.25, gap: 0.1, lane: 0.15, stuckSpeed: 0.5, dismountSecs: 3, touch: 0.15, bumpSpeed: 2,
+  knockShare: 0.7, knockMin: 4, knockMax: 9, crashFriction: 6,
+  swerve: 0.45, swerveMax: 2.6, shuffle: 0.7, passMargin: 0.15, passRetry: 0.4, steerRate: 10, crashDrift: 0.4, fallSecs: 0.6, aimCone: 1.9, maxLean: 0.55,
+  twistRate: 6, twistSlack: 0.2, reloadSecs: 1.8, dismountReact: { thrown: 0.7, held: 0.3 }, thrownFlinch: 0.5,
 };
 
 /**

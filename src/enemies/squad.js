@@ -10,7 +10,7 @@ import { createEnemy, thinkEnemy, enemyHurt, hearNoise, alertNearby, ENEMY_TYPES
 import { thinkBoss } from '../core/boss.js';
 import { applyDamage, rayTargets } from '../core/combat.js';
 import { waveComposition, waveTier } from '../core/rules.js';
-import { buildSoldier, MUZZLE } from './soldier.js';
+import { buildSoldier, muzzleOf } from './soldier.js';
 import { createRiders } from './riders.js';
 
 export { ENEMY_TYPES, enemyParams };
@@ -75,6 +75,8 @@ class Enemy {
     c.x = clamp(c.x, -44.3, 44.3);
     c.z = clamp(c.z, -44.3, 44.3);
     c.speedNow = Math.hypot(c.vx, c.vz);
+    // the pose first: the muzzle of the shot and the laser is read off the gun as it is drawn
+    this.animate(dt);
 
     // effects of the decision
     if (intent.cue) g.audio.telegraph(this.muzzlePos());
@@ -82,7 +84,6 @@ class Enemy {
     if (intent.alert) alertNearby(g.enemies.cores, c, world.player, intent.alert, rnd);
     if (intent.fire) this.shoot(intent.fire.dist, now);
     if (intent.grenade) this.throwGrenade(intent.grenade);
-    this.animate(dt);
   }
 
   /**
@@ -111,16 +112,8 @@ class Enemy {
     }
   }
 
-  muzzlePos() {
-    const c = this.core, s = c.scale, y = c.yaw;
-    const sy = Math.sin(y), cy = Math.cos(y);
-    const m = MUZZLE[c.T.weapon] || MUZZLE.rifle;
-    return {
-      x: c.x + (sy * m.fwd + cy * m.side) * s,
-      y: c.y + (m.up - 0.45 * c.crouch) * s,
-      z: c.z + (cy * m.fwd - sy * m.side) * s,
-    };
-  }
+  /** The muzzle of the gun as the model holds it now (crouched, flinching, riding, turned to aim). */
+  muzzlePos() { return muzzleOf(this.model); }
 
   aimLaser(alpha) {
     const g = this.game, m = this.muzzlePos(), eye = g.player.eyePos();

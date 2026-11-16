@@ -140,7 +140,6 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 900px) {
-  .banner-t { font-size: 40px; }
   .radar { width: 220px; height: 220px; }
   .panel.menu { margin: 0 auto; }
 }
@@ -209,14 +208,23 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .row.pad-row .pad-focus { outline-offset: 1px; }
 body.pad-active canvas#game { cursor: none; }
 
-/* the 300 px radar and the kill feed: keep the wave banners ("ВОЛНА ОТБИТА" is the longest, about
-   12.7 times the font size wide) clear of both on windows narrower than 1680 px */
-@media (min-width: 901px) and (max-width: 1679px) {
-  .banner-t { font-size: 56px; }
+/* the radar (300 px from 26 px, 220 px on narrow windows) and the kill feed: the banners live between
+   them, the same margin on both sides so they stay centred. A title is about 14 times its font size wide
+   ("БОСС: КОМАНДИР"), so the font shrinks with the window; a longer line (the new riders under the
+   wave's number, a boss in English) wraps instead of running under the radar. */
+.banner { left: 340px; right: 340px; }
+.banner-t { font-size: clamp(30px, calc((100vw - 680px) / 14), 72px); }
+.banner-s { font-size: clamp(13px, calc((100vw - 680px) / 40), 20px); }
+@media (max-width: 900px) {
+  .banner { left: 250px; right: 250px; }
+  .banner-t { font-size: clamp(22px, calc((100vw - 500px) / 14), 40px); }
+  .banner-s { font-size: 13px; }
 }
-@media (min-width: 901px) and (max-width: 1500px) {
-  .banner-t { font-size: 44px; }
-}
+/* the big map takes the middle of the screen from about 117 px down: a banner shown while it is open
+   goes above it, smaller, instead of over it */
+.hud.map-open .banner { top: 12px; }
+.hud.map-open .banner-t { font-size: clamp(22px, calc((100vw - 680px) / 14), 38px); }
+.hud.map-open .banner-s { font-size: 13px; margin-top: 2px; }
 @media (max-width: 900px) {
   .kb-grid { grid-template-columns: 1fr; }
   .ctl-pad { min-width: 0; }

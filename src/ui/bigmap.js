@@ -42,6 +42,7 @@ export class BigMap {
     this.el.querySelector('#h-bmhint').textContent = (hint ? '[' + hint + '] ' : '') + t('mapClose');
     this.el.querySelector('#h-bmfoe').textContent = t('radarEnemies') + ': ' + t(g.settings.radarEnemies === 'all' ? 're_all' : 're_fired').toLowerCase();
     this.el.classList.remove('hidden');
+    g.hud.hud.classList.add('map-open');    // the wave banner moves above the map (styles.css)
     this.draw();
   }
 
@@ -49,6 +50,7 @@ export class BigMap {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.el.classList.add('hidden');
+    this.game.hud.hud.classList.remove('map-open');
   }
 
   /** Once per frame: the map key, closing outside of play, drawing while open. */

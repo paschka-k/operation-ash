@@ -82,12 +82,16 @@ export class Shooting {
   give(id) { return giveWeapon(this.arsenal, id); }
   /** Debug: every weapon in the game. */
   giveAll() { for (const id of WEAPON_ORDER) giveWeapon(this.arsenal, id); }
+  /**
+   * No sprint now: the trigger is held on a loaded gun, or the aim button is held (it raises the sights,
+   * or spins a minigun up, which has none), or the barrels of a minigun still turn. The aim button wins
+   * over a held sprint key as in the genre, and it ends the gamepad's latched sprint (L3) too, which
+   * otherwise kept the sights down (and a minigun's barrels still) for as long as the stick pushed on.
+   */
   firingLock() {
-    const a = this.arsenal, input = this.game.input, spec = specOf(a);
+    const a = this.arsenal, input = this.game.input;
     if (spinLevel(a) > 0) return true;     // no running with the barrels of a minigun turning
-    // the aim button spins a minigun up (it has no sights): held, it stops a sprint as the trigger does,
-    // also the gamepad's latched sprint (L3), which would otherwise keep the barrels from ever starting
-    if (spec.spinUpMs && spec.noAds && input.right && !a.switching) return true;
+    if (input.right && !a.switching) return true;
     return input.left && a.weapons[a.current].mag > 0 && !a.reload && !a.switching;
   }
   /** Speed multiplier of the weapon in hand, for the player's moveSpeed(). */
