@@ -2,12 +2,48 @@
 import fs from 'node:fs';
 import { test, assert } from '../harness.mjs';
 import { RELEASES, renderChangelog, renderReleaseNotes, compareVersions } from '../../src/core/releases.js';
+import { MAP_IDS } from '../../src/core/maps.js';
+import { t, setLang, getLang } from '../../src/config.js';
 
 const read = (p) => fs.readFileSync(new URL('../../' + p, import.meta.url), 'utf8');
 const SECTIONS = ['added', 'changed', 'fixed', 'removed'];
+const byVersion = (v) => RELEASES.find((r) => r.version === v);
+/** A string of the game's interface in one language (the language of the game is restored). */
+function inGame(lang, key) {
+  const was = getLang();
+  setLang(lang);
+  try { return t(key); } finally { setLang(was); }
+}
 
 test('releases: package.json carries the version of the newest record', () => {
   assert.equal(JSON.parse(read('package.json')).version, RELEASES[0].version);
+});
+
+test('releases: package-lock.json carries the same version (or npm install rewrites it)', () => {
+  const lock = JSON.parse(read('package-lock.json')), version = JSON.parse(read('package.json')).version;
+  assert.equal(lock.version, version);
+  assert.equal(lock.packages[''].version, version);
+});
+
+test('releases: every deploy lists what was still rough, from the project records of its commit', () => {
+  // .autopilot/PROGRESS.md of e3e6751 names three known bugs, of dc62181 eight; earlier deploys have "not done"
+  assert.equal(byVersion('1.4.1').known.length, 3, '1.4.1');
+  assert.equal(byVersion('1.4.0').known.length, 8, '1.4.0');
+  for (const r of RELEASES) assert.ok(r.known.length >= 1, r.version + ' says nothing about what was rough');
+});
+
+test('releases: the notes call maps and weapons by the names the game shows', () => {
+  for (const lang of ['ru', 'en']) {
+    const maps = byVersion('1.5.0').notes[lang].join(' ').toLowerCase();
+    for (const id of MAP_IDS) {
+      const name = inGame(lang, 'map_' + id);
+      assert.ok(maps.includes(name.toLowerCase()), lang + ' 1.5.0 misses the map "' + name + '"');
+    }
+    const fixes = byVersion('1.4.1').notes[lang].join(' ');
+    for (const key of ['w_rifle', 'w_carbine']) {
+      assert.ok(fixes.includes(inGame(lang, key)), lang + ' 1.4.1 misses the weapon "' + inGame(lang, key) + '"');
+    }
+  }
 });
 
 test('releases: eight records, versions strictly falling, dates never rising, new on top', () => {

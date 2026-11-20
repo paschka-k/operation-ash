@@ -1,5 +1,6 @@
 // Models of the big props: barrels, crates, cardboard boxes, ammo boxes,
-// concrete barriers, a covered car.
+// concrete barriers. (The scan of a covered car is no longer loaded: since wave 15
+// cars and their tarpaulins are built by code in src/world/fleet.js.)
 //
 //   loadModelPack()        -> Promise<{loaded, missing, source}>
 //   getModel(id)           -> THREE.Object3D, a fresh clone
@@ -22,7 +23,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { getMaterial, findAsset } from './materials.js';
 
-export const MODEL_IDS = ['barrel', 'crate', 'cardboard_box', 'ammo_box', 'concrete_barrier', 'covered_car'];
+export const MODEL_IDS = ['barrel', 'crate', 'cardboard_box', 'ammo_box', 'concrete_barrier'];
 
 /**
  * Size in metres each model is fitted to (width x, height y, depth z). stretch: fill the box
@@ -37,11 +38,10 @@ export const MODEL_SIZES = {
   cardboard_box: { w: 0.6, h: 0.45, d: 0.45 },
   ammo_box: { w: 0.36, h: 0.2, d: 0.24 },
   concrete_barrier: { w: 3, h: 0.85, d: 0.7, stretch: true },
-  covered_car: { w: 4.3, h: 1.5, d: 1.9 },
 };
 
 /** Most triangles a scanned model may keep. */
-const MODEL_BUDGET = { barrel: 3000, crate: 3200, cardboard_box: 500, concrete_barrier: 2500, covered_car: 6000 };
+const MODEL_BUDGET = { barrel: 3000, crate: 3200, cardboard_box: 500, concrete_barrier: 2500 };
 
 const plain = (color, rough = 0.8, metal = 0.1, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
 let SHARED = null;
@@ -56,8 +56,6 @@ function shared() {
     olive: plain(0x59633c, 0.7, 0.2),
     yellow: plain(0xd6b020, 0.6, 0),
     concrete: getMaterial('concrete'),
-    tarp: plain(0x6b7258, 0.95, 0, { side: THREE.DoubleSide }),
-    rubber: plain(0x151515, 0.9, 0),
   };
   return SHARED;
 }
@@ -96,17 +94,6 @@ const PRIMITIVES = {
     const M = shared(), g = new THREE.Group();
     g.add(box(3, 0.8, 0.7, M.concrete, 0, 0.4, 0));
     g.add(box(2.9, 0.16, 0.35, M.concrete, 0, 0.88, 0));
-    return g;
-  },
-  covered_car() {
-    const M = shared(), g = new THREE.Group();
-    g.add(box(4.3, 0.9, 1.8, M.tarp, 0, 0.7, 0));
-    g.add(box(2.4, 0.6, 1.6, M.tarp, -0.2, 1.4, 0));
-    for (const x of [-1.4, 1.4]) for (const z of [-0.9, 0.9]) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 14).rotateX(Math.PI / 2), M.rubber);
-      w.position.set(x, 0.32, z);
-      g.add(w);
-    }
     return g;
   },
 };

@@ -42,13 +42,13 @@ export class GpuInfoUi {
   /** Ask the launcher who we are. Silent on file:// , on the site and when there is no launcher. */
   async _probe() {
     const h = location.hostname;
-    if (!/^https?:$/.test(location.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(h)) { this._note(t('gpuTabNote')); return; }
+    if (!/^https?:$/.test(location.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(h)) { this._note('gpuTabNote'); return; }
     let info = null;
     try {
       const r = await fetch('/launcher/info', { cache: 'no-store' });
       if (r.ok) info = await r.json();
     } catch (e) { /* no launcher */ }
-    if (!info || !info.launcher) { this._note(t('gpuTabNote')); return; }
+    if (!info || !info.launcher) { this._note('gpuTabNote'); return; }
     this.launcher = info;
     this._pickRow();
     // debug aid: the launcher prints what the game really renders on
@@ -58,8 +58,11 @@ export class GpuInfoUi {
     } catch (e) { /* ignore */ }
   }
 
-  /** The explanation under the card's line (a plain tab, or a launcher with nothing to choose). */
-  _note(text) {
+  /**
+   * The explanation under the card's line (a plain tab, or a launcher with nothing to choose), by the key of
+   * its string, or none. The key stays in data-t, so hud.refreshLang translates it when the language changes.
+   */
+  _note(key) {
     const row = document.getElementById('o-gpu') && document.getElementById('o-gpu').parentNode;
     if (!row) return;
     let n = document.getElementById('gpu-note');
@@ -69,7 +72,17 @@ export class GpuInfoUi {
       n.className = 'gpu-note';
       row.after(n);
     }
-    n.textContent = text;
+    if (key) n.dataset.t = key;
+    else delete n.dataset.t;
+    n.textContent = key ? t(key) : '';
+  }
+
+  /** After a change of language (hud.refreshLang): the texts that are not a plain data-t string. */
+  refreshLang() {
+    const out = document.getElementById('o-gpu');
+    if (out) out.textContent = this.name;
+    if (this.box) this.box.querySelector('b').textContent = this.name;
+    this._fillPick();
   }
 
   _optionLabel(o) { return o.name + ' — ' + t(o.id === 'high' ? 'gpuFast' : 'gpuWindows'); }
@@ -81,12 +94,12 @@ export class GpuInfoUi {
   _pickRow() {
     const info = this.launcher;
     if (document.getElementById('s-gpu')) return;
-    if (!info.gpus || info.gpus.length < 2) { this._note(t('gpuOnlyOne')); return; }
+    if (!info.gpus || info.gpus.length < 2) { this._note('gpuOnlyOne'); return; }
     const anchor = document.getElementById('gpu-note') || (document.getElementById('o-gpu') && document.getElementById('o-gpu').parentNode);
     if (!anchor) return;
     const row = document.createElement('label');
     row.className = 'row';
-    row.innerHTML = '<span></span><select id="s-gpu"></select>';
+    row.innerHTML = '<span data-t="gpuPick"></span><select id="s-gpu"></select>';
     anchor.after(row);
     const sel = row.querySelector('select');
     this._fillPick();
@@ -116,7 +129,7 @@ export class GpuInfoUi {
   /** Save the settings, ask the launcher to restart the window on the card; the new window opens in the main menu. */
   async _choose(id) {
     const sel = document.getElementById('s-gpu');
-    const fail = () => { this._note(t('gpuFailed')); if (sel) sel.value = this.launcher.choice; };
+    const fail = () => { this._note('gpuFailed'); if (sel) sel.value = this.launcher.choice; };
     if (!this.canSwitch || id === this.launcher.choice) { if (sel) sel.value = this.launcher.choice; return; }
     if (this.game.state === 'paused' && !window.confirm(t('gpuConfirm'))) { if (sel) sel.value = this.launcher.choice; return; }
     this.game.saveSettings();
@@ -125,7 +138,7 @@ export class GpuInfoUi {
       const body = r.ok ? await r.json() : null;
       if (!body || !body.ok) { fail(); return; }
       this.launcher.choice = id;
-      this._note(body.restarting ? t('gpuRestarting') : '');
+      this._note(body.restarting ? 'gpuRestarting' : null);
     } catch (e) { fail(); }
   }
 

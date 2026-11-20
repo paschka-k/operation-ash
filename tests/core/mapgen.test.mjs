@@ -142,6 +142,62 @@ test('mapgen: at least 16 spawn points outside the colliders, reachable from the
   }
 });
 
+test('mapgen: no free ground cut off from the start bigger than 15 m2 (where the player could stand and the bots never come)', () => {
+  // the small ones are the basins of the fountains (12, 5 and 5.5 m2): nobody stands in them for long
+  for (const id of NEW) {
+    const { nav, reach } = world(id);
+    const seen = new Uint8Array(nav.n * nav.n);
+    for (let z = 0; z < nav.n; z++) {
+      for (let x = 0; x < nav.n; x++) {
+        const first = nav.idx(x, z);
+        if (seen[first] || reach[first] || nav.blockedCell(x, z)) continue;
+        // a pocket of free cells, grown over all eight neighbours (never smaller than the bots would see it)
+        const stack = [first];
+        seen[first] = 1;
+        let cells = 0;
+        while (stack.length) {
+          const c = stack.pop(), cx = c % nav.n, cz = (c / nav.n) | 0;
+          cells++;
+          for (let dz = -1; dz <= 1; dz++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (nav.blockedCell(cx + dx, cz + dz)) continue;
+              const k = nav.idx(cx + dx, cz + dz);
+              if (seen[k] || reach[k]) continue;
+              seen[k] = 1;
+              stack.push(k);
+            }
+          }
+        }
+        const area = cells * nav.cell * nav.cell;
+        assert.ok(area <= 15, id + ': ' + area + ' m2 of free ground cut off from the start, near ' + nav.toWorld(x) + ', ' + nav.toWorld(z));
+      }
+    }
+  }
+});
+
+test('mapgen: on the port nobody gets off the quay onto the water, not even with a jump from a bollard', () => {
+  // the worst case: standing on a bollard (0.6 m) right at the quay (1.3 m), running north and jumping
+  // whenever the feet touch something, at walking and at sprinting speed (PLAYER, the controller's step 0.46 m)
+  const { L, cols } = world('port');
+  const bollards = L.pieces.filter((p) => p.type === 'box' && p.kind === 'bollard');
+  assert.ok(bollards.length >= 4, 'bollards along the quay: ' + bollards.length);
+  for (const speed of [PLAYER.walk, PLAYER.sprint]) {
+    for (const b of bollards) {
+      const body = { x: b.x, y: b.y + b.h, z: b.z, vx: 0, vy: 0, vz: 0, radius: PLAYER.radius, height: PLAYER.height, onGround: true };
+      assert.equal(overlapsAny(body, cols), false, 'standing on the bollard at ' + b.x);
+      let north = Infinity;
+      for (let i = 0; i < 120 * 5; i++) {
+        body.vx = 0; body.vz = -speed;
+        if (body.onGround) { body.vy = PLAYER.jump; body.onGround = false; }
+        stepBody(body, 1 / 120, cols, { gravity: PLAYER.gravity, stepHeight: 0.46 });
+        north = Math.min(north, body.z - body.radius);
+      }
+      assert.ok(north >= -35 - 1e-6, 'port: from the bollard at ' + b.x + ' at ' + speed + ' m/s the body reached z ' + north.toFixed(2) +
+        ' and ended at ' + [body.x, body.y, body.z].map((n) => n.toFixed(2)));
+    }
+  }
+});
+
 test('mapgen: at least 6 buildings with doors that open into a reachable inside', () => {
   for (const id of NEW) {
     const { L, cols, nav, reach } = world(id);

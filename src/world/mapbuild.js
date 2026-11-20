@@ -324,7 +324,7 @@ function fleetPiece(w, p, slot, i) {
 /**
  * Photoscans baked into a generated map, at most as many as the block bakes: a scanned barrier is
  * thousands of triangles in the colour, occlusion and every shadow pass. The rest are drawn from boxes.
- * (Cars are models of world/fleet.js since wave 15, the scan of a covered car is not used.)
+ * (Cars are models of world/fleet.js since wave 15; the scan of a covered car is neither used nor loaded.)
  */
 const SCAN_CAP = { concrete_barrier: 4 };
 function useScan(w, id) {

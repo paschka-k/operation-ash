@@ -240,6 +240,8 @@ export class HUD {
     this.cache = {};
     this.syncSettings();
     this.refreshBindings();
+    // the graphics card line: its card names with a translated word, the select's tooltip (src/ui/gpu.js)
+    if (this.game.gpuInfo) this.game.gpuInfo.refreshLang();
   }
 
   /**

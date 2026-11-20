@@ -11,6 +11,21 @@
 //          title: {ru, en}, notes: {ru: [], en: []},          // for the player, plain words
 //          changes: {added, changed, fixed, removed: []},       // for the developer, English
 //          known: [{ru, en}]}                                   // what is still rough
+// `known` comes from the "Известные баги" (known bugs) of .autopilot/PROGRESS.md on the deploy commit, and
+// for the deploys before 1.4.0, whose PROGRESS.md had none, from its "Не сделано" (not done) lists.
+
+/** .autopilot/PROGRESS.md at 9b3cac5 and c4eed2f (the same file), "Не сделано". */
+const NOT_DONE_AT_FIRST = [
+  {
+    ru: 'Фотосканов нет: их загрузка ждёт согласия владельца, скрипты готовы.',
+    en: 'No photoscans yet: downloading them waits for the owner\'s consent; the scripts are ready.',
+  },
+  { ru: 'Звук на слух не проверен.', en: 'The sound was not checked by ear.' },
+  {
+    ru: 'Открытие `dist/game.html` двойным щелчком (`file://`) не проверено: панель браузера его не открывает.',
+    en: 'Opening `dist/game.html` with a double click (`file://`) was not tried: the browser pane cannot open it.',
+  },
+];
 
 export const RELEASES = [
   {
@@ -31,7 +46,7 @@ export const RELEASES = [
         'Окно «Что нового» в главном меню и номер версии.',
       ],
       en: [
-        'Ten maps, one per wave: City Block, Port, Industrial Zone, Old Town, Railyard, Airfield, Winter Village, Night Downtown, Desert Village and Construction Site. The name shows in the wave banner.',
+        'Ten maps, one per wave: City Block, Port, Industrial Zone, Old Town, Railyard, Airfield, Winter Village, Downtown at Night, Desert Village and Construction Site. The name shows in the wave banner.',
         'From wave 6 you pick the next map yourself: the shop between waves shows cards with a view from above. In endless mode the choice is always open.',
         'Each map has its own light and weather: snow in the winter village, dust in the desert, rain on the construction site; the street lamps of the night map really light the ground.',
         'The big map and the radar draw the view from above of the map you are on.',
@@ -65,7 +80,7 @@ export const RELEASES = [
       ],
       fixed: [],
       removed: [
-        'The scan of the covered car is no longer placed (the tarpaulin is built by code); the file is still loaded.',
+        'The scan of the covered car is no longer placed or loaded (`MODEL_IDS`): the tarpaulins are built by code. The file stays in `assets/`.',
       ],
     },
     known: [
@@ -76,10 +91,6 @@ export const RELEASES = [
       {
         ru: 'Ночная карта темновата; на ней и на старом городе кадр тяжелее остальных (примерно на 5% больше вызовов отрисовки).',
         en: 'The night map is rather dark; it and the old town are the heaviest maps (about 5% more draw calls).',
-      },
-      {
-        ru: 'На «Порту» у полосы воды нет стены: можно спрыгнуть с набережной туда, куда боты не доберутся.',
-        en: 'On the Port map the strip of water has no wall: you can drop off the quay to where the bots cannot follow.',
       },
       {
         ru: 'Окна машин непрозрачные, салон виден только у открытых и сгоревших; некоторые модели длиннее своего коллайдера и выступают до четверти метра.',
@@ -104,15 +115,15 @@ export const RELEASES = [
       ru: [
         'Ездоки поворачивают корпус к вам и стреляют, когда ствол смотрит на вас, а не вбок.',
         'Ездоки объезжают обломки и брошенный транспорт, а не слезают цепочкой.',
-        'Мотоциклы держат больше в поворотах, а мотоцикл с места толкает вас, не убивая сразу.',
+        'Мотоциклы держат больше в поворотах. Раньше мотоцикл, трогающийся рядом с вами, останавливался позади, теперь толкает вас долей урона.',
         'Баннер волны стоит между радаром и лентой убийств и не закрывает большую карту.',
         'Геймпад в магазине ходит по столбцу оружия; LT и RT снимают зафиксированный бег.',
-        'Названия стволов: «Боевая винтовка HR-12» и «AR-7 Assault Rifle» больше не путаются.',
+        'Названия стволов: «Боевая винтовка HR-12» и «Автомат AR-7» больше не путаются.',
       ],
       en: [
         'Riders turn their body towards you and fire when the barrel points at you, not sideways.',
         'Riders steer round wrecks and abandoned vehicles instead of dismounting one after another.',
-        'Motorbikes hold the road better in turns, and a bike starting from a standstill pushes you instead of killing you outright.',
+        'Motorbikes hold the road better in turns. A bike moving off close to you used to stop behind you; now it pushes you and deals a share of the ramming damage.',
         'The wave banner sits between the radar and the kill feed and no longer covers the big map.',
         'On a gamepad the shop is walked down the weapon column; LT and RT release a locked sprint.',
         'Weapon names: the HR-12 Battle Rifle and the AR-7 Assault Rifle are no longer confused.',
@@ -134,7 +145,21 @@ export const RELEASES = [
       ],
       removed: [],
     },
-    known: [],
+    // .autopilot/PROGRESS.md at e3e6751, "Известные баги"
+    known: [
+      {
+        ru: 'Мотоцикл, стоящий вплотную за вами (ближе ~0.4 м), по-прежнему тормозит: разогнаться для толчка ему негде.',
+        en: 'A motorbike standing right behind you (closer than about 0.4 m) still brakes: it has no room to pick up speed for a push.',
+      },
+      {
+        ru: 'Объезжая, ездок смотрит лучами только на стены и предметы: пешего бота на полосе он ждёт, а не объезжает. Где места нет с обеих сторон, ездок, как раньше, спешивается через 3 с.',
+        en: 'When swerving, a rider casts its rays only at walls and objects: it waits behind a bot on foot in its lane instead of going round. Where there is no room on either side it dismounts after 3 s, as before.',
+      },
+      {
+        ru: 'Хрупко, но работает: метки ездоков на большой карте рисует HUD копией её разметки; граната командира не ранит ботов через подмену таймеров `props`; тесты подшагов и перезарядки ездока проверяют меньше, чем названо.',
+        en: 'Fragile but working: the HUD draws the riders\' marks on the big map with a copy of its layout; the commander\'s grenade spares the bots by swapping the timers of `props`; the tests of the rider\'s sub-steps and reload check less than their names say.',
+      },
+    ],
   },
   {
     version: '1.4.0',
@@ -143,7 +168,7 @@ export const RELEASES = [
     title: { ru: 'Волна 14: ездоки и боссы', en: 'Wave 14: riders and bosses' },
     notes: {
       ru: [
-        'Враги ездят по улицам на самокатах, скейтах и мотоциклах (с волны 3), обходят друг друга по петлям и слезают, когда их сбивают.',
+        'Враги ездят по улицам на самокатах, скейтах и мотоциклах (с волны 3): едут по петлям улиц и слезают, когда их сбивают.',
         'Боссы на волнах 5 и 10 со своей полоской здоровья; ездоки и боссы входят в число ботов волны.',
         'Новые звуки и вид транспорта, обломки сбитых машин.',
         'Мотоцикл может сбить вас, если разгонится: следите за дорогой.',
@@ -167,15 +192,49 @@ export const RELEASES = [
       ],
       changed: [
         'Rider and boss share the wave count of bots (`3 + 2(N-1)`): riders instead of rank and file, a boss instead of a heavy.',
-        'Skateboards from wave 4; bike ram on contact; riders lean into turns; numbers moved to `rules.js`; keys listed in README.',
+        'The boss and his guard open the wave: they come first in its queue.',
+        'Skateboards from wave 4; bike ram on contact; riders lean into turns; numbers moved to `rules.js`.',
       ],
       fixed: [
-        'Boss and his guard went first in the wave queue.',
-        'The graphics hint for integrated AMD graphics.',
+        'README did not list the grenade, inventory and big map keys (G, I, M) that came with 1.3.0.',
       ],
       removed: [],
     },
-    known: [],
+    // .autopilot/PROGRESS.md at dc62181, "Известные баги"
+    known: [
+      {
+        ru: 'Ездок иногда стреляет вбок из ружья, смотрящего вдоль улицы: корпус не поворачивается к игроку.',
+        en: 'A rider sometimes fires sideways with a gun pointing along the street: its body does not turn to the player.',
+      },
+      {
+        ru: 'Брошенный целый транспорт стоит в полосе 20 с: ездоки той же петли упираются в него и тоже спешиваются.',
+        en: 'An abandoned vehicle stands in the lane for 20 s: riders of the same loop run into it and dismount too.',
+      },
+      {
+        ru: 'Мотоцикл, идущий на игрока, проходит крутой поворот на скорости наезда быстрее предела сцепления; мотоцикл, тронувшийся почти с места ближе ~2.5 м за игроком, всё ещё останавливается.',
+        en: 'A motorbike charging the player takes a sharp turn at ramming speed faster than its grip allows; a bike moving off from almost a standstill within about 2.5 m behind the player still stops.',
+      },
+      {
+        ru: 'Баннер волны 2.5 с висит поверх открытой большой карты; на окнах уже ~1250 px длинный баннер касается радара.',
+        en: 'The wave banner stays over the open big map for 2.5 s; in windows narrower than about 1250 px a long banner touches the radar.',
+      },
+      {
+        ru: 'Геймпад в магазине ходит вниз зигзагом; с зафиксированным бегом LT не прерывает бег (кроме минигана).',
+        en: 'On a gamepad the shop is walked down in a zigzag; with a locked sprint LT does not stop the sprint (except with the minigun).',
+      },
+      {
+        ru: 'Два ствола называются «Автомат» (AR-7, HR-12), по-английски оба «Rifle»; строка README «1 2 3 — pistol, rifle, shotgun» устарела (стволов девять).',
+        en: 'Two weapons are called "Автомат" in Russian (AR-7, HR-12) and both "Rifle" in English; the README line "1 2 3 — pistol, rifle, shotgun" is out of date (there are nine weapons).',
+      },
+      {
+        ru: 'Дуло бота задано формулой: у присевшего бота трассер выходит до 0.28 м выше ствола.',
+        en: 'The muzzle of a bot is a formula: the tracer of a crouching bot starts up to 0.28 m above the barrel.',
+      },
+      {
+        ru: 'Хрупко, но работает: метки ездоков на большой карте рисует HUD копией её разметки; граната командира не ранит ботов через подмену таймеров `props`; тесты подшагов и перезарядки ездока проверяют меньше, чем названо; комментарий о знаке кривизны в `src/core/routes.js` наоборот.',
+        en: 'Fragile but working: the HUD draws the riders\' marks on the big map with a copy of its layout; the commander\'s grenade spares the bots by swapping the timers of `props`; the tests of the rider\'s sub-steps and reload check less than their names say; the comment on the sign of the curvature in `src/core/routes.js` is the wrong way round.',
+      },
+    ],
   },
   {
     version: '1.3.0',
@@ -187,7 +246,7 @@ export const RELEASES = [
         'Запас бега: бежать можно 3 секунды, потом бег восстанавливается; полоска над здоровьем.',
         'Радар крупнее, большая карта на клавишу M, настройка «враги на карте».',
         'Все клавиши можно переназначить; игра работает с геймпадом, включая меню и магазин.',
-        'Деньги за убийства и за волны, магазин между волнами без таймера: оружие, улучшения, броня и аптечки.',
+        'Деньги за убийства и за волны, магазин между волнами без таймера: оружие, улучшения, броня, гранаты и пополнение патронов.',
         'Возрождение на волне смерти.',
         'Шесть новых стволов: пистолет-пулемёт, боевая винтовка, снайперская винтовка, пулемёт, миниган и огнемёт.',
         'Ручные гранаты.',
@@ -196,7 +255,7 @@ export const RELEASES = [
         'Sprint stamina: you can run for 3 seconds, then it recovers; a bar above the health.',
         'A larger radar, a big map on the M key and an "enemies on the map" setting.',
         'Every key can be rebound; the game works with a gamepad, menus and the shop included.',
-        'Money for kills and waves, and a shop between waves without a timer: weapons, upgrades, armour and medkits.',
+        'Money for kills and waves, and a shop between waves without a timer: weapons, upgrades, armour, grenades and ammo refills.',
         'Revival on the wave you died on.',
         'Six new weapons: an SMG, a battle rifle, a sniper rifle, a machine gun, a minigun and a flamethrower.',
         'Hand grenades.',
@@ -216,7 +275,37 @@ export const RELEASES = [
       fixed: [],
       removed: [],
     },
-    known: [],
+    // .autopilot/PROGRESS.md at a41ba9c: "Не сделано" and the waves 11 to 13 "Не сделано или шероховато"
+    known: [
+      {
+        ru: 'Не проверены: настоящий геймпад, настоящий захват мыши, звук на слух, открытие `dist/game.html` двойным щелчком (`file://`).',
+        en: 'Not tried: a real gamepad, a real mouse capture, sound by ear, opening `dist/game.html` with a double click (`file://`).',
+      },
+      {
+        ru: 'Баннер волны 2.5 с рисуется поверх открытой большой карты; при ширине окна меньше ~1250 px длинный баннер касается радара.',
+        en: 'The wave banner is drawn over the open big map for 2.5 s; in windows narrower than about 1250 px a long banner touches the radar.',
+      },
+      {
+        ru: 'Геймпад в магазине ходит вниз зигзагом между двумя колонками.',
+        en: 'On a gamepad the shop is walked down in a zigzag between its two columns.',
+      },
+      {
+        ru: 'С зафиксированным бегом на геймпаде LT не прерывает бег для обычного оружия (для минигана прерывает).',
+        en: 'With a locked sprint on a gamepad LT does not stop the sprint with ordinary weapons (it does with the minigun).',
+      },
+      {
+        ru: 'Два ствола называются «Автомат» (AR-7 и HR-12), по-английски оба «Rifle».',
+        en: 'Two weapons are called "Автомат" in Russian (AR-7 and HR-12), and both "Rifle" in English.',
+      },
+      {
+        ru: 'Снайперская винтовка убивает с одного попадания в тело только на первых волнах: здоровье врагов растёт.',
+        en: 'The sniper rifle kills with one body hit only in the first waves: the health of the enemies grows.',
+      },
+      {
+        ru: 'Игра может рисовать на встроенной видеокарте, хотя в системе есть дискретная (Intel Iris Xe при RTX 4070, замер 14 ноября): переключает её настройка Windows «Графика» для браузера, это делает игрок.',
+        en: 'The game may draw on the integrated graphics although the system has a discrete card (Intel Iris Xe next to an RTX 4070, measured on 14 November): the Windows "Graphics" setting for the browser switches it, and the player has to make it.',
+      },
+    ],
   },
   {
     version: '1.2.0',
@@ -257,7 +346,29 @@ export const RELEASES = [
       ],
       removed: [],
     },
-    known: [],
+    // .autopilot/PROGRESS.md at b07b1ea: "Не сделано" of waves 9 and 10 and of the project
+    known: [
+      {
+        ru: 'Полное время кадра со сканами не измерено (панель браузера скрыта); памяти видеокарты сканам нужно примерно втрое больше: около 40 текстур 1024 × 1024 вместо порождённых.',
+        en: 'The full frame time with scans was not measured (the browser pane was hidden); the scans need about three times more video memory: some 40 textures of 1024 × 1024 instead of generated ones.',
+      },
+      {
+        ru: 'Здания, оружие и солдаты по-прежнему собраны из простых форм: картинка ближе к фотографии на стенах, дороге и предметах, но это не уровень Unreal Engine 5.',
+        en: 'Buildings, weapons and soldiers are still made of simple shapes: walls, road and props are closer to a photograph, but this is not Unreal Engine 5.',
+      },
+      {
+        ru: 'Из отчёта слепой приёмки не тронуто: город из коробок с сеткой окон, плоские одноцветные блоки (контейнеры, вывески), мешки с песком как кирпичи, молочная дымка против солнца, чёрные проёмы окон без рам и стёкол, обломки без контактных теней, тёмный плоский свет внутри зданий, нет тени игрока и оружия.',
+        en: 'Left from the blind acceptance report: a city of boxes with a grid of windows, flat one-colour blocks (containers, signs), sandbags that look like bricks, a milky haze against the sun, black window openings without frames or glass, rubble without contact shadows, dark flat light inside the buildings, no shadow of the player or the weapon.',
+      },
+      {
+        ru: 'Оружие по-прежнему порождается кодом, не вылеплено и не отсканировано; правая рука и спусковой крючок в обычном положении скрыты корпусом оружия.',
+        en: 'The weapons are still generated by code, not sculpted or scanned; in the usual position the right hand and the trigger are hidden by the body of the weapon.',
+      },
+      {
+        ru: 'Не проверены: двойной щелчок по собранным файлам (`file://`, в том числе `dist/game-scans.html`), настоящий захват мыши и звук на слух.',
+        en: 'Not tried: opening the built files with a double click (`file://`, `dist/game-scans.html` included), a real mouse capture and sound by ear.',
+      },
+    ],
   },
   {
     version: '1.1.0',
@@ -294,7 +405,33 @@ export const RELEASES = [
       ],
       removed: [],
     },
-    known: [],
+    // .autopilot/PROGRESS.md at 72c182e: "Не сделано" of waves 7 and 8 and of the project
+    known: [
+      {
+        ru: 'Фотосканов нет: их загрузка ждёт согласия владельца, скрипты готовы.',
+        en: 'No photoscans yet: downloading them waits for the owner\'s consent; the scripts are ready.',
+      },
+      {
+        ru: 'Полное время кадра после правок не измерено: панель браузера была скрыта, замеры шумные.',
+        en: 'The full frame time after the changes was not measured: the browser pane was hidden and the numbers were noisy.',
+      },
+      {
+        ru: 'Ящики, бочки и подборы по-прежнему отдельные сетки (55 штук, по вызову отрисовки на проход и каскад).',
+        en: 'Crates, barrels and pickups are still separate meshes (55 of them, one draw call each per pass and cascade).',
+      },
+      {
+        ru: 'Оружие в руках игрока состоит из 68 сеток.',
+        en: 'The weapon in the player\'s hands is made of 68 meshes.',
+      },
+      {
+        ru: 'Дуло в расчёте выстрела бота задано формулой, а не костью: у присевшего бота трассер начинается до 0.28 м выше видимого ствола.',
+        en: 'The muzzle in a bot\'s shot is a formula, not a bone: the tracer of a crouching bot starts up to 0.28 m above the visible barrel.',
+      },
+      {
+        ru: 'Звук на слух и открытие `dist/game.html` двойным щелчком (`file://`) не проверены.',
+        en: 'Sound by ear and opening `dist/game.html` with a double click (`file://`) were not tried.',
+      },
+    ],
   },
   {
     version: '1.0.1',
@@ -317,7 +454,7 @@ export const RELEASES = [
       fixed: [],
       removed: [],
     },
-    known: [],
+    known: NOT_DONE_AT_FIRST,
   },
   {
     version: '1.0.0',
@@ -354,7 +491,7 @@ export const RELEASES = [
       fixed: [],
       removed: [],
     },
-    known: [],
+    known: NOT_DONE_AT_FIRST,
   },
 ];
 

@@ -180,7 +180,7 @@ const STR = {
     ctl_map: 'Карта',
     pad_lstick: 'левый стик', pad_rstick: 'правый стик',
     padUnsupported: 'Геймпад не поддерживается в этом браузере',
-    mapTitle: 'КАРТА КВАРТАЛА', mapClose: 'закрыть', mapNorth: 'С', mapYou: 'Вы',
+    mapClose: 'закрыть', mapNorth: 'С', mapYou: 'Вы',
 
     // ---- wave 12: economy
     moneyFmt: '{n} $',
@@ -297,7 +297,6 @@ const STR = {
     // ---- wave 15: map-ui
     mapHead: 'Карта: {name}',
     mapScale: '10 м',
-    mapLegendFoe: 'Противник',
     mapLegendRider: 'Ездок',
     mapLegendBoss: 'Босс',
     mapNext: 'Следующая карта: {name}',
@@ -421,7 +420,7 @@ const STR = {
     ctl_map: 'Map',
     pad_lstick: 'left stick', pad_rstick: 'right stick',
     padUnsupported: 'This controller is not supported in this browser',
-    mapTitle: 'BLOCK MAP', mapClose: 'close', mapNorth: 'N', mapYou: 'You',
+    mapClose: 'close', mapNorth: 'N', mapYou: 'You',
 
     // ---- wave 12: economy
     moneyFmt: '${n}',
@@ -538,7 +537,6 @@ const STR = {
     // ---- wave 15: map-ui
     mapHead: 'Map: {name}',
     mapScale: '10 m',
-    mapLegendFoe: 'Enemy',
     mapLegendRider: 'Rider',
     mapLegendBoss: 'Boss',
     mapNext: 'Next map: {name}',

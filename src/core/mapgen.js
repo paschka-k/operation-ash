@@ -24,7 +24,8 @@
 // P (a piece) = {type, x, z, y, yaw, w, h, d, kind}: centre (x, z), base height y, size w along the local
 //   x axis, d along the local z axis, h up; yaw is three.js rotation.y and always a quarter turn, so local
 //   +z points to (sin yaw, cos yaw). kind is the look (material) for the world layer. The generator fills
-//   every field. PIECE_SHAPES[type](piece) are the colliders of a piece.
+//   every field. PIECE_SHAPES[type](piece) are the colliders of a piece. Water may carry `wall`: the height
+//   it is walled off to over its surface (the port's sea), invisible and passed by bullets.
 //
 // Collider boxes are makeBox boxes (core/collision) plus `part` ('wall' | 'floor' | 'roof' | 'parapet' |
 // 'partition' | 'piece' | 'perimeter') and `ref` (index of the building or the piece).
@@ -213,7 +214,14 @@ export const PIECE_SHAPES = {
     lbox(p, 0, p.h * 0.55, 0, p.w, p.h * 0.45, 0.25, { kind: 'metal' }),
   ],
   neon: () => [],
-  water: () => [],
+  // open water: with p.wall it is walled off over its whole surface up to that height (kept LIM inside the
+  // arena like every piece), so nobody jumps down to where the bots cannot follow; bullets fly over it
+  water: (p) => {
+    if (!(p.wall > 0)) return [];
+    const r = pieceRect(p), y = p.y || 0;
+    return [boxFromMinMax(Math.max(r.x0, -LIM), y, Math.max(r.z0, -LIM), Math.min(r.x1, LIM), y + p.wall, Math.min(r.z1, LIM),
+      { kind: 'concrete', blocksBullets: false })];
+  },
   quay: (p) => solidOf(p, 'concrete'),
   box: (p) => solidOf(p, surfaceOf(p.kind)),
 };
@@ -614,6 +622,7 @@ class Plan {
       type, x: rd(x), z: rd(z), y: o.y ?? 0, yaw: o.yaw ?? 0,
       w: rd(o.w ?? w), h: rd(o.h ?? h), d: rd(o.d ?? d), kind: o.kind ?? this.kindFor(type),
     };
+    if (o.wall > 0) p.wall = rd(o.wall);   // water only: how high it is walled off (PIECE_SHAPES.water)
     const boxes = PIECE_SHAPES[type](p);
     const why = this.blockedBy(boxes, o);
     if (why) return this.fail(o, `${type} at ${rd(x)}, ${rd(z)} ${why}`);
@@ -1010,8 +1019,12 @@ const PLANS = {
     P.road(-44.4, 21, 28, 31);          // south road
     P.loop('dock', [[-32, -28.5], [32, -28.5], [32, 1], [-32, 1]], 5);
     P.loop('south', [[-38, 23.5], [24, 23.5], [24, 28.5], [-38, 28.5]], 2.5);
-    P.put('water', 0, -40, { w: 90, d: 10, h: 0.1, kind: 'water' });
-    P.put('quay', 0, -34.7, { w: 88.8, h: 1.3, d: 0.6, must: true });
+    // The sea is walled off from the quay's edge up, as high as the perimeter: no one standing on the quay
+    // (1.3 m), a bollard (0.6 m) or a crate stack (2 m) jumps onto it (PLAYER.jumpHeight 1.1 m), so nobody
+    // drops onto the water where the bots cannot follow. The wall is not drawn and bullets fly over it.
+    const SEA_WALL = 14;
+    const sea = P.put('water', 0, -40, { w: 90, d: 10, h: 0.1, wall: SEA_WALL, kind: 'water', must: true });
+    P.put('quay', 0, -34.7, { w: 88.8, h: 1.3, d: 0.6, must: true, allow: ['p' + sea] });
     for (const x of [-16, 14]) P.put('crane', x, -29.5, { w: 12, h: 16, d: 8.6, kind: 'gantry', must: true });
     for (let x = -40; x <= 40; x += 10) P.put('box', x, -33.5, { w: 0.4, h: 0.6, d: 0.4, kind: 'bollard' });
     // the container yard: one container with stairs to its roof, rows of single and stacked ones
