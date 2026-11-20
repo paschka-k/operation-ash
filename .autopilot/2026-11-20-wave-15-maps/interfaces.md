@@ -106,11 +106,62 @@
 - Чистые помощники в `tools/launch-lib.mjs` с тестами в `tests/tools/launch.test.mjs` (`npm run test:tools` запускает все `tests/tools/*.test.mjs`): `browserArgs({choice, profile, url})`, `gpuOptions(controllerNames)` (по `gpuInfo` из `src/core/gpu.js`), `originAllowed(origin, port)`, `findBrowser(env, exists)`.
 - Игра: `src/ui/gpu.js` — проба `GET /launcher/info` (тихо проваливается на сайте и `file://`); строка «Видеокарта» в настройках: под лаунчером — `select#s-gpu` (смена только в меню и на паузе, перед перезапуском `saveSettings`), иначе — имя видеокарты и честный текст.
 
+#### Построено таском 02 (dd61d10)
+- `maps.js`: `MAP_IDS`, `MAPS[{id, nameKey, themeKey, order}]`, `defaultMapFor(wave, endless)`, `mapChoiceOpen(nextWave, endless)`, `chooseMap(g, id) -> {ok, reason?: 'unknown'|'closed'}` (сначала проверка id); `MAP_CHOICE_FROM_WAVE = 6` в `rules.js`.
+- `waves.js`: `g.map` (`'block'` после `createGame`/`restart`), `g.shop.map`, `checkpoint.map`; `leaveShop` → `g.map = g.shop.map`; `reviveAtCheckpoint` → `g.map = cp.map ?? 'block'`. `shop.js`: `shopOffers().maps = {open, next, choices: [{id, order, nameKey, themeKey, selected, default}]}`.
+- `mapgen.js`: `generateLayout(id)` (кэш, ОБЩИЙ объект — не мутировать; первый вызов 70–120 мс; бросает для `'block'` и неизвестных), `PIECE_TYPES` (37, плюс `bus`, `hedgehog`, `dumpster`), `PIECE_SHAPES[type](p)`, `layoutColliders(L)`, `mapSchema(id)`. Для мира: `STOREY`, `surfaceOf(kind)`, `stepsFor(h)`, `buildingOpenings(b) -> {n, s, e, w: [{from, to, bottom, top, kind: 'door'|'window'}]}`, `partitionOf(b)`, `buildingColliders(b, ref)`. У зданий ещё `parapet` и `access` (разрывы парапета у лестниц); каждый коллайдер помечен `part` (`'wall'|'floor'|'roof'|'parapet'|'partition'|'piece'|'perimeter'`) и `ref`. **Меши рисовать по `buildingOpenings`/`partitionOf`/`PIECE_SHAPES`, чтобы совпали с коллайдерами.**
+- Имена вида в `P.kind`, `B.wall`, `theme.wallKinds` (corrugated, timber, adobe, neonPink, wagonRed, spruce, bollard…) — у мира таких материалов нет: мир берёт ближайший существующий (таск 05), таск 06 даёт им свои материалы.
+- Высоты 2.6–4.6 м — только для игрока (сетка ботов плоская, как на «Квартале»). У каждой карты 1–2 петли ездоков.
+- **Здания новых карт строятся из `buildingColliders`/`buildingOpenings`/`partitionOf` раскладки, никогда через `World.building()`**: тот тратит `world.rng` (облом, пропуск окон, заплатки пола, перегородки наугад) и ставит свои коллайдеры. Поле `B` не равно опциям `World.building`.
+- Раскладка (`generateLayout`) и всё в ней (`theme` — объект модуля, общие массивы) — только читать; ни миру, ни магазину её не менять.
+- Видимое без коллайдера (по ревью таска 02, допустимо — выше досягаемости игрока): скат двускатной крыши (коллайдер — плоская плита на высоте `H`), балка портального крана, кронштейн фонаря, навес прилавка. Проверка лучами таска 06 эти части пропускает.
+- `mapSchema(id)` строит раскладку целиком (~80 мс на карту): схемы для магазина считать один раз и держать, не на каждую отрисовку.
+- `routes.js`: `routesFor(mapId)` (`'block'` → `levelRoutes()`, иначе из раскладки, кэш); `onRoute(x, z, margin, routes = levelRoutes())` прежний.
+
+#### Построено таском 03 (56ed4ae)
+- `src/core/atmosphere.js`: `ATMOSPHERES[id]`, `atmosphereFor(id)`, `sunDirection(atm) -> {x, y, z}`, `WEATHER_KINDS`; пресет как в «Атмосфера» плюс `view: {sun, sky, fill, sunColor, skyColor, groundColor, fillColor}`, необязательные `sky.gain`, `sky.clamp` (у `'block'` 2.9 — убрал дымку против солнца).
+- Рендер: `gr.applyAtmosphere(id) -> bool` (false — тот же id), `gr.atmosphereId`, `gr.setLampLights([{x, y?, z, color?}])`, `gr.lampLights`, `gr.removeAOSwap(full)`, `gr.renderTopDown(half, size = 1024) -> HTMLCanvasElement | null` (север, −z, сверху; ~84 мс первый раз, ~20 мс дальше).
+- `createWeather(gr) -> {object, kind, intensity, set(kind, i), update(dt, camera), clear(), dispose()}` (`src/world/weather.js`); `createPlayerShadow(game) -> {mesh, update(), dispose()}` (`src/player/shadow.js`).
+- `World.wall()` возвращает `[{s, e, top, open}]`; `World.casterProxies` (прокси теней мешков). `world.rng` «Квартала» — прежние 30057 вызовов, 1093 коллайдера, 24 точки появления.
+
+#### Построено таском 05 (a12ffe3)
+- `buildLevel(scene, game, mapId = 'block')`; `new World(game, {mapId, seed})`; поля мира `mapId, half, routes, layout, menuView, vantage, sharedMats, chunkGroup, layoutColliderCount, furnitureColliderCount`; `World.dispose()`; `World.sandbagBags(cx, cz, len, alongX)`.
+- `src/world/mapbuild.js`: `buildGenerated(world, layout)`, `placeLayout(world)`, `PIECE_DRAW[type](w, p, mat, i)` (нет строки → рисуется форма `PIECE_SHAPES`), `drawPieceShape`, `lookMaterial(w, kind)`, `MAP_SEEDS`.
+- `src/game/maps.js`: `switchMap(game, id) -> Promise` (состояние `'loading'`, `game.switching`, `game.lastSwitch = {mapId, ms, build, snapAndCompile}`), `ensureMap(game, id) -> Promise<bool>`, `snapMap(game)` → `game.mapView`, `mapLamps(world)`.
+- `Game`: `startGame`, `leaveShop`, `revive` возвращают промис, когда карта меняется; `game.switchMap(id)`; `snapshot().map`. `Riders.routes` — геттер `world.routes`; `Director.hasLoops()`; без петель ездок выходит пешим. Строки `mapLoading`, `map_<id>` (все 10, ru/en) — уже есть.
+- Смена «В бой» → управление: 0.5–1.4 с, худшая 2.0 с (первый старый город); после 20 смен память и записи AO не растут.
+
+#### Построено таском 06 (a6037f9)
+- `materials.js`: `themeTextureSet(kind, aniso) -> {map, normalMap, orm, texWorld}`; 9 наборов `onDemand` в `TEXTURE_SPECS` (snow, sand, adobe, corrugated, cobble, tiles, timber, grass, gravel), стартовый пак прежний.
+- `details.js`: `export decorMaterials(w)`; наклонный фонарь и билборд — только `'block'`. `mapbuild.js`: своя форма у всех 37 типов `PIECE_DRAW`, `lookMaterial(w, kind)` по таблице `LOOKS`, слияние оттенков (`mergeTints`). На карту не больше 3 сканов машины и 4 барьера.
+- Бюджет (вызовы / тыс. треугольников, старт · центр): «Квартал» 390/691 · 269/624; худшая новая карта — ночь +5 % вызовов, +6.5 % треугольников.
+
+#### Построено таском 09 (a207785) и 10 (b596350)
+- `src/core/fleet.js`: `FLEET[{id, slot, length, width, height, wheelbase, wheelR, look}]`, `SLOTS`, `PAINTS`, `PLACES[slot] = [{name, w, d}]`, `PLACE_MARGIN`, `vehicleOf(id)`, `placeOf(w, d)`, `fitsPlace(v, w, d)`, `pickVehicle(slot | [slots], w, d, seed) -> id | null`, `pickPaint(id, seed)`.
+- `src/world/fleet.js`: `buildVehicle(world, id, {x, y, z, yaw, state, paint, tarp, seed}) -> {id, length, width, height}` (без коллайдеров), `fleetMaterials(world)`, `fleetMaterial(gr)`, `vehicleGeometry(id, {state, paint, tarp})`. `level.js`: `World.aoProxies`, `material.userData.aoProxy` в `_flush`, `car/coveredCar(cx, cz, yaw, paint, look?)`, `_parking()` + `PARKING` (6 новых мест; коллайдеров «Квартала» 1093 → 1102). Брезенты — кодом, скан `covered_car` не используется.
+- Транспорт ездоков (`vehicles.js`): подписи прежние, треугольников почти вдвое.
+
+#### Построено таском 07 (8f9b3c6)
+- `src/ui/bigmap.js`: `mapHalfOf(game)`, `mapImageOf(game) -> canvas | null` (null, когда `mapView.mapId !== world.mapId`). `src/ui/mapthumb.js`: `schemeOf(id)`, `schemeReady(id)`, `drawThumb(canvas, id)`, `fillThumbs(root)`.
+- Магазин: `#shop-maps`, `button.btn.map-card[data-act="map"][data-id][data-key="map:<id>"]`; «В бой: волна N — <карта>». `Director.mapName()`. Строки группы `// ---- wave 15: map-ui`: `mapHead, mapScale, mapLegendRider, mapLegendBoss, mapNext, mapChooseH, mapChooseHint, mapDefault, mapSelected, toBattleMap, mapTheme_<id>`.
+
+#### Построено таском 04 (d57eff5)
+- `tools/launch-lib.mjs`: `browserArgs({choice, profile, url}) -> string[]`, `gpuOptions(names) -> [{id: 'high'|'default', name, kind}]`, `effectiveChoice(saved, options)`, `originAllowed(origin, port)`, `hostAllowed(host, port)`, `findBrowser(env, exists) -> {name, path} | null`. `tools/serve-lib.mjs` — общая раздача игры (`server.mjs` и `tools/play.mjs`); без лаунчера `GET /launcher/info` отвечает `{launcher: false}` (200).
+- HTTP лаунчера: `GET /launcher/info -> {launcher, gpus, choice, browser, seen}`; `POST /launcher/gpu {choice}`, `POST /launcher/seen {renderer}` — только со своим `Origin`, иначе 403. `tools/play.mjs`: `--dry`, `--port N`, env `OPERATION_ASH_HOME`. `npm run play`, `play-windows.cmd`; `npm run test:tools` гоняет `tests/tools/run.mjs` (все `tests/tools/*.test.mjs`).
+- Игра: `select#s-gpu`, `#gpu-note` в настройках (`src/ui/gpu.js`); проба лаунчера только на localhost/127.0.0.1/[::1]; строки `config.js` группа `// ---- wave 15: gpu`.
+
 ### Вид «Квартала», R02.4–R02.7 (владелец — таск вида «Квартала»)
 - Тень игрока: простая форма только для теней (капсула/коробки, `colorWrite: false` как `writeNothing` в pool.js, `castShadow`), следует за `player.pos` и взглядом; в кадре не видна; на всех картах.
 - Мешки: шейдер набора `sandbag` в `materials.js` (ткань, швы, завязки) и форма в `World.sandbags` — подушки со скруглением и разбросом размера/оттенка. Разброс — от своего генератора с зерном из координат, **не** `world.rng` (облик и петли карты 1 не должны сдвинуться: тест `routes` и снимок коллайдеров остаются зелёными, число вызовов `world.rng` прежнее).
 - Дымка: только числа атмосферы `'block'` в `src/core/atmosphere.js` (туман, `mie*`, экспозиция) — после таска рендера; тест атмосферы обновляется вместе с ними (`'block'` больше не равен старым константам — это и есть изменение).
 - Фасады: в `World.building()`/`wall()` — откосы и подоконники проёмов, пояса между этажами, парапеты; всё `collide: false`, через `box`/`_addGeo` до `_flush`; без вызовов `world.rng`.
+
+### Машины, G05–G14 (владелец — таск машин)
+- `src/core/fleet.js` (чистый): `FLEET` — `[{id, slot: 'car'|'sport'|'van'|'bus'|'truck', length, width, height, wheelbase, wheelR, look: {...}}]`, id: `'semi', 'roadster08', 'roadster17', 'roadster26', 'model3', 'modelS', 'modelX', 'modelY', 'badger', 'cyberbus', 'cyber3', 'cyberroadster', 'cybertruck'`; `pickVehicle(slot, w, d, seed) -> id` — модель, что влезает в место `w × d` (по длине и ширине с поворотом); тест `tests/core/fleet.test.mjs`.
+- `src/world/fleet.js`: `buildVehicle(world, id, {x, z, yaw, state: 'parked'|'burnt', paint}) ` — кладёт геометрию в батчи мира (`_addGeo` по материалам набора) до `_flush`; **коллайдеров не ставит** (их ставит место: `World.car`, кусок раскладки, новое место парковки). `fleetMaterials(world)` — краска (несколько цветов), стекло, тёмное стекло, хром, резина, диски, фары, фонари (излучают), обугленный металл; через `prepareMaterial`, освобождаются `World.dispose()`.
+- Где вызывается: `World.car()` и запасная машина `coveredCar` (облик меняется, коллайдер тот же, `world.rng` не трогать — разброс от зерна из координат места), автобус в `details.js`, `PIECE_DRAW.car` / `.bus` в `mapbuild.js`. Новые места парковки «Квартала» — в `level.js` после всех вызовов `world.rng` (своё зерно), с проверкой `onRoute`/`fits`/точек появления.
+- Без логотипов, эмблем, надписей, номерных знаков; в именах кода и интерфейса марки нет (id выше — внутренние).
+- Транспорт ездоков (`src/enemies/vehicles.js`) — отдельный таск: подписи `createVehicles`, `buildVehicleModel(kind, wrecked)`, размеры и пулы прежние.
 
 ### Версии и заметки (владелец — таск выпусков)
 - `src/core/releases.js` (чистый): `RELEASES` — новые сверху, `{version, date: 'YYYY-MM-DD', commit: 'abc1234'|null, title: {ru, en}, notes: {ru: [], en: []}, changes: {added: [], changed: [], fixed: [], removed: []}, known: []}`; `renderChangelog(releases) -> string`, `renderReleaseNotes(releases) -> string`.
@@ -122,3 +173,15 @@
 - `tests/core/mapgen.test.mjs` — по каждой из 9 карт: детерминизм, коллайдеры в арене, старт свободен, ≥16 точек появления вне коллайдеров и достижимы от старта по `NavGrid` из `layoutColliders`, ≥1 петля длиной > 30 м с зазором ≥ 0.8 м (`routeClearance`), ≥6 зданий с дверями, ≥1 высота, подборы/ящики/бочки не на петлях и не в стенах.
 - `tests/core/atmosphere.test.mjs`, `tests/core/releases.test.mjs`, `tests/tools/launch.test.mjs`.
 - Браузер: `window.__game` — новые `game.switchMap(id)` (или `switchMap(game, id)` через модуль) и `snapshot().map`.
+
+### Построено таском F1 (ремонт ветки)
+- Кусок раскладки `water` принимает необязательный `wall` (высота): `Plan.put('water', x, z, {wall})`; `PIECE_SHAPES.water(p)` → `[]`, а при `p.wall > 0` — одна коробка над водой (обрезана по LIM, `blocksBullets: false`). На порту — невидимая стена высотой периметра (14 м) над морем: игрок останавливается у края набережной (z −35), пули летят над ней, граната от неё отскакивает.
+- `tests/core/mapgen.test.mjs`: на каждой карте свободные клетки `NavGrid` вне области старта не образуют островов больше 15 м²; на порту `stepBody` с константами PLAYER не уходит с набережной на воду.
+- `GpuInfoUi.refreshLang()` — вызывает `hud.refreshLang`; `#gpu-note[data-t]`, подпись `select#s-gpu` — `span[data-t="gpuPick"]`.
+- `src/render/models.js`: `covered_car` убран из `MODEL_IDS`, `MODEL_SIZES`, `MODEL_BUDGET` и запасных форм; в списке скачивания `tools/assets-lib.mjs` (`MODEL_MAP`) он остался, `build:scans` и `build:web` ещё несут файл.
+- `tests/core/releases.test.mjs`: версия `package-lock.json` = версии `package.json`; у каждой выкладки `known` не пуст там, где в PROGRESS.md коммита выкладки были «Известные баги» или «Не сделано»; названия карт и оружия в заметках — как в игре.
+
+### Построено таском F2 (ремонт по слепой приёмке)
+- `src/ui/gpu.js`: `menuHintKeys(kind, launcher|null) -> string[]` — строки уведомления о встроенной графике: в обычной вкладке первой — лаунчер (`npm run play` / `play-windows.cmd`), Windows/NVIDIA одной строкой «второй путь»; под лаунчером — «Настройки → Видеокарта» и кнопка `#gpu-hint-open` → `GpuInfoUi.openPick()` (настройки на `select#s-gpu`). Строки ru/en `gpuHintLauncher`, `gpuHintOther`, `gpuHintPick`, `gpuHintOpen`; ключи `gpuHintWindows/Nvidia/Restart` удалены.
+- `src/core/fleet.js` (FLEET): у Model 3/S/X/Y поля `clearance`, `belt` (X/Y — кроссоверы 1.68/1.62 м, линия окон и просвет выше); у CyberRoadster `rearWheelR`, `tyreW: [front, rear]`, `wheelSpan`; `fitsPlace` берёт max(width, wheelSpan). `src/world/fleet.js`: опция оси `open` — колёса вне кузова.
+- Тест `tests/core/gpu.test.mjs` импортирует `src/ui/gpu.js` (DOM трогается только при постройке) — шов вне ядра.

@@ -18,3 +18,4 @@ Thumbs.db
 
 # autopilot run screenshots (large; kept locally)
 .autopilot/*/shots/
+.autopilot/*/reference/
