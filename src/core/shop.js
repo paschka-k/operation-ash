@@ -11,6 +11,7 @@
 
 import { WEAPON_SPECS, WEAPON_ORDER, GRENADE, UPGRADE, ARMOR, upgradeCost, upgradedSpec } from './rules.js';
 import { owns, giveWeapon, specOf, weaponLevel, setWeaponLevel, refillArsenal, addGrenades } from './weapons.js';
+import { MAPS, defaultMapFor, mapChoiceOpen } from './maps.js';
 
 const no = (reason) => ({ ok: false, reason });
 
@@ -53,6 +54,23 @@ export function shopOffers(g, a) {
       canBuy: open && !!armorNext && g.money >= ARMOR.prices[armorNext],
     },
     refill: { used: !!(g.shop && g.shop.refilled), canUse: open && !!g.shop && !g.shop.refilled },
+    maps: mapOffer(g, open),
+  };
+}
+
+/**
+ * The map of the next wave: `next` is the one leaveShop() will take, `open` whether the player may
+ * pick another (chooseMap in core/maps). Every map is listed; `default` marks the one in order.
+ */
+function mapOffer(g, open) {
+  const inOrder = defaultMapFor(g.wave + 1, g.endless);
+  const next = (g.shop && g.shop.map) || inOrder;
+  return {
+    open: open && mapChoiceOpen(g.wave + 1, g.endless),
+    next,
+    choices: MAPS.map((m) => ({
+      id: m.id, order: m.order, nameKey: m.nameKey, themeKey: m.themeKey, selected: m.id === next, default: m.id === inOrder,
+    })),
   };
 }
 

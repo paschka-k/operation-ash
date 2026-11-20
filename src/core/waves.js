@@ -22,6 +22,7 @@ import {
   bossForWave, RIDER_RULES,
 } from './rules.js';
 import { ECONOMY, stageBreakdown, waveHpMult, absorbDamage } from './rules.js';
+import { defaultMapFor } from './maps.js';
 
 const INTRO_MS = 4500;
 
@@ -61,8 +62,9 @@ export function createGame(seed = 1) {
     waveHeadshots: 0,
     waveDamaged: false,
     stage: null,             // what the last cleared wave earned (stageBreakdown)
-    shop: null,              // the open shop visit: {wave, refilled}
+    shop: null,              // the open shop visit: {wave, refilled, map}
     checkpoint: null,        // what the player had at the start of the current wave
+    map: 'block',            // the map of the wave being fought (core/maps); a new game is on the block
   };
 }
 
@@ -95,6 +97,7 @@ function saveCheckpoint(g, wave) {
     kills: p.kills, headshots: p.headshots, shotsFired: p.shotsFired, shotsHit: p.shotsHit,
     armor: p.armor, armorMax: p.armorMax, armorLevel: p.armorLevel,
     arsenal: null,
+    map: g.map,
   };
   return g.checkpoint;
 }
@@ -107,21 +110,28 @@ function payStage(g) {
   return s;
 }
 
-/** The shop: a safe break without a timer. Health and armour are full again, the free refill is unused. */
+/**
+ * The shop: a safe break without a timer. Health and armour are full again, the free refill is unused.
+ * It offers the next map in order; chooseMap (core/maps) may change it from wave 6 on.
+ */
 function openShop(g, now) {
   const p = g.player;
   g.phase = 'shop';
-  g.shop = { wave: g.wave, refilled: false };
+  g.shop = { wave: g.wave, refilled: false, map: defaultMapFor(g.wave + 1, g.endless) };
   p.health = p.maxHealth;
   p.armor = p.armorMax;
   p.lastDamageAt = now - PLAYER.regenDelay * 1000;
 }
 
-/** Leave the shop: a short countdown, then the next wave. The checkpoint already holds the purchases. */
+/**
+ * Leave the shop: a short countdown, then the next wave on the map of the shop (the game layer switches
+ * to g.map). The checkpoint already holds the purchases and the map.
+ */
 export function leaveShop(g, now) {
   if (g.phase !== 'shop') return false;
   g.phase = 'intermission';
   g.intermissionUntil = now + ECONOMY.countdownMs;
+  g.map = (g.shop && g.shop.map) || defaultMapFor(g.wave + 1, g.endless);
   saveCheckpoint(g, g.wave + 1);
   return true;
 }
@@ -135,6 +145,7 @@ export function reviveAtCheckpoint(g, now) {
   const cp = g.checkpoint;
   if (g.phase !== 'dead' || !cp) return false;
   g.money = cp.money; g.spent = cp.spent; g.score = cp.score; g.bestStreak = cp.bestStreak; g.endless = cp.endless;
+  g.map = cp.map ?? 'block';           // the wave of death is replayed on its own map
   Object.assign(g.player, {
     health: g.player.maxHealth, lastDamageAt: now - PLAYER.regenDelay * 1000,
     kills: cp.kills, headshots: cp.headshots, shotsFired: cp.shotsFired, shotsHit: cp.shotsHit,

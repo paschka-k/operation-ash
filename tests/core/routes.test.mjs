@@ -124,3 +124,26 @@ test('routes: onRoute without a list checks the loops of the level', () => {
   assert.equal(onRoute(p.x, p.z, 0.5), true);
   assert.equal(onRoute(0, 44.9, 0.5), false);
 });
+
+// ---- wave 15: the loops of every map
+import { routesFor, levelRoutes } from '../../src/core/routes.js';
+import { generateLayout } from '../../src/core/mapgen.js';
+
+test('routes: routesFor gives the block its own loops and every generated map the loops of its layout', () => {
+  assert.equal(routesFor('block'), levelRoutes(), 'the block keeps the very same built loops');
+  for (const id of ['port', 'factory', 'oldtown', 'railyard', 'airfield', 'winter', 'night', 'desert', 'construction']) {
+    const defs = generateLayout(id).routes, built = routesFor(id);
+    assert.deepEqual(built.map((r) => r.id), defs.map((d) => d.id), id);
+    built.forEach((r, i) => assert.equal(r.length, buildRoute(defs[i]).length, id + '/' + r.id));
+    assert.equal(routesFor(id), built, id + ': built once');
+  }
+  assert.throws(() => routesFor('atlantis'));
+});
+
+test('routes: onRoute checks the loops it is given, not the block\'s', () => {
+  const port = routesFor('port');
+  const p = port[0].sample(port[0].length / 4);
+  assert.equal(onRoute(p.x, p.z, 0.5, port), true);
+  const q = ROUTES.map(buildRoute)[0].sample(3);
+  assert.equal(onRoute(q.x, q.z, 0.5, []), false);
+});

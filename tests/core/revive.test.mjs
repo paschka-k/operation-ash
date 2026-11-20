@@ -219,3 +219,18 @@ test('a checkpoint taken with the minigun spinning brings back the weapon, not t
   assert.equal(a.trigger, false);
   assert.equal(tryFire(a, 1100).reason, 'spinning', 'they must spin up again before the first round');
 });
+
+// ---- wave 15: the checkpoint keeps the map
+test('the checkpoint keeps the map, a revival replays the wave of death on that map', () => {
+  const g = createGame(1), clock = { now: 0 };
+  restart(g, 0);
+  assert.equal(g.checkpoint.map, 'block');
+  toWave(g, clock, 3);
+  assert.equal(g.map, 'factory');
+  assert.equal(g.checkpoint.map, 'factory');
+  playWave(g, clock, 1);
+  assert.equal(g.phase, 'dead');
+  g.map = 'block';                      // the game layer may have drawn the menu on another map since
+  assert.ok(reviveAtCheckpoint(g, clock.now));
+  assert.equal(g.map, 'factory');
+});

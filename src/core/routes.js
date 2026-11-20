@@ -15,6 +15,11 @@
 // Every loop keeps at least 0.8 m from the solid colliders of the level that are taller than 0.42 m;
 // tests/core/routes.test.mjs checks that against a snapshot of the level's colliders taken in the game
 // (tests/core/fixtures/street-colliders.json). Crates and barrels are not placed near the loops (onRoute).
+//
+// Wave 15: every map has its own loops. ROUTES are the block's; the generated maps carry theirs in their
+// layout (core/mapgen). routesFor(mapId) gives the built loops of a map.
+
+import { generateLayout } from './mapgen.js';
 
 const TAU = Math.PI * 2;
 
@@ -192,7 +197,22 @@ export function levelRoutes() {
   return built;
 }
 
-/** True when (x, z) is closer than `margin` to any loop (of the level, or of the given list). */
+const byMap = new Map();
+/**
+ * The built loops of a map: the block's own (levelRoutes) for 'block', the loops of the generated layout
+ * for the others, each built once. Throws for an unknown map.
+ */
+export function routesFor(mapId) {
+  if (mapId === 'block') return levelRoutes();
+  let routes = byMap.get(mapId);
+  if (!routes) {
+    routes = generateLayout(mapId).routes.map(buildRoute);
+    byMap.set(mapId, routes);
+  }
+  return routes;
+}
+
+/** True when (x, z) is closer than `margin` to any loop (of the block, or of the given list). */
 export function onRoute(x, z, margin, routes = levelRoutes()) {
   for (const r of routes) if (r.nearest(x, z).dist < margin) return true;
   return false;

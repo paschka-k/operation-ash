@@ -208,3 +208,32 @@ test('shopOffers lists armour, grenades, refill and what each purchase would do'
   assert.equal(rifle.next.mag, upgradedSpec(WEAPON_SPECS.rifle, 1).mag);
   assert.equal(UPGRADE.maxLevel, 3);
 });
+
+// ---- wave 15: the map of the next wave in the shop
+import { MAP_IDS, chooseMap } from '../../src/core/maps.js';
+
+test('shop: before wave 6 it names the next map in order without a choice', () => {
+  const { g, a } = inShop();
+  g.wave = 4; g.shop = { wave: 4, refilled: false, map: 'railyard' };   // wave 5 is map 5
+  const m = shopOffers(g, a).maps;
+  assert.equal(m.open, false);
+  assert.equal(m.next, 'railyard');
+  assert.deepEqual(m.choices.map((c) => c.id), MAP_IDS);
+  assert.deepEqual(m.choices.map((c) => c.order), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const sel = m.choices.filter((c) => c.selected).map((c) => c.id);
+  assert.deepEqual(sel, ['railyard']);
+  assert.deepEqual(m.choices.filter((c) => c.default).map((c) => c.id), ['railyard']);
+});
+
+test('shop: from wave 6 the ten maps are a choice, the picked one selected, the one in order marked', () => {
+  const { g, a } = inShop();
+  g.wave = 5; g.shop = { wave: 5, refilled: false, map: 'airfield' };
+  assert.equal(shopOffers(g, a).maps.open, true);
+  assert.deepEqual(chooseMap(g, 'desert'), { ok: true });
+  const m = shopOffers(g, a).maps;
+  assert.equal(m.next, 'desert');
+  assert.deepEqual(m.choices.filter((c) => c.selected).map((c) => c.id), ['desert']);
+  assert.deepEqual(m.choices.filter((c) => c.default).map((c) => c.id), ['airfield']);
+  g.phase = 'wave';
+  assert.equal(shopOffers(g, a).maps.open, false, 'outside the shop nothing is open');
+});

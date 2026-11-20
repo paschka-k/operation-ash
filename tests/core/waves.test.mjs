@@ -199,3 +199,21 @@ test('result stats report accuracy, kills and time', () => {
   assert.equal(s.shots, 20); assert.equal(s.hits, 8); near(s.accuracy, 0.4);
   assert.equal(s.kills, 1); assert.equal(s.headshots, 1); assert.equal(s.maxWaves, 10);
 });
+
+// ---- wave 15: every wave has its own map
+test('the map follows the waves: the block first, the next map with "to battle", restart back to the block', () => {
+  const g = createGame(1), clock = { now: 0 };
+  restart(g, 0);
+  assert.equal(g.map, 'block');
+  advance(g, 4.6, clock);
+  playWave(g, clock);
+  assert.equal(g.phase, 'shop');
+  assert.equal(g.map, 'block', 'the shop stands on the map of the wave just won');
+  assert.equal(g.shop.map, 'port');
+  nextWave(g, clock);
+  assert.equal(g.wave, 2);
+  assert.equal(g.map, 'port');
+  assert.equal(g.checkpoint.map, 'port');
+  restart(g, clock.now);
+  assert.equal(g.map, 'block');
+});

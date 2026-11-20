@@ -386,6 +386,14 @@ export const MAX_WAVES = 10;
 export const MAX_ALIVE = 12;
 export const INTERMISSION_SECONDS = 6;
 
+// ---- wave 15: maps
+/**
+ * Waves 1-10 are fought on maps 1-10 in order (core/maps). From this wave on the shop lets the player
+ * pick the map of the next wave: the brief's "after level 5" is the shop after wave 5, before wave 6.
+ * The endless mode always has the choice.
+ */
+export const MAP_CHOICE_FROM_WAVE = 6;
+
 /** Number of bots in wave n: 3 + 2 * (n - 1). */
 export function waveCount(n) { return 3 + 2 * (n - 1); }
 
