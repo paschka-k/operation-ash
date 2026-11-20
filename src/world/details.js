@@ -104,7 +104,8 @@ function fenceTexture() {
   }, true);
 }
 
-function decorMaterials(w) {
+/** The decor materials of a map (made once per World, kept in w.dm; World.dispose frees them). */
+export function decorMaterials(w) {
   if (w.dm) return w.dm;
   const rng = w.rng;
   const over = (m, f = -3) => { m.polygonOffset = true; m.polygonOffsetFactor = f; m.polygonOffsetUnits = f; return m; };
@@ -319,6 +320,7 @@ export function addBigProps(w) {
 // --------------------------------------------------------------- details
 export function addDetails(w) {
   const m = w.m, dm = decorMaterials(w), rng = w.rng;
+  const block = !w.layout;   // map 1, built by World.build(); a generated map has its layout
   const N = { n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] };
 
   // world position of a window centre on its wall (face coordinate filled by mountOnWall)
@@ -346,8 +348,8 @@ export function addDetails(w) {
       w.quad(mat, above.x + p.nx * 0.16, r.top - 0.75, above.z + p.nz * 0.16, 0.9 + rng() * 0.5, 1.4, yaw + (rng() - 0.5) * 0.3, 0.1 + rng() * 0.15, (rng() - 0.5) * 0.3);
       curtainCount++;
     }
-    // AC units beside windows
-    if (r.storey <= 1 && rng() < 0.22) {
+    // AC units beside windows (on a generated map only above the ground floor, out of reach: they have no collider)
+    if ((block ? r.storey <= 1 : r.storey === 1) && rng() < 0.22) {
       const off = 1.55 * (rng() < 0.5 ? -1 : 1);
       const ax = p.x + (p.nx === 0 ? off : 0), az = p.z + (p.nz === 0 ? off : 0);
       const wall = w.mountOnWall(ax, r.bottom + 0.4, az, p.nx, p.nz);
@@ -405,8 +407,8 @@ export function addDetails(w) {
     posters++;
   }
 
-  // big billboard on the south face of the north-east office
-  {
+  // big billboard on the south face of the north-east office (the block's own building; no random numbers)
+  if (block) {
     const hit = w.mountOnWall(28, 5.4, -20, 0, 1, 4);
     if (hit) {
       w.box(hit.x, 5.4, hit.z + 0.12, 5.4, 2.8, 0.14, m.metalChar, { collide: false });
@@ -415,14 +417,16 @@ export function addDetails(w) {
     }
   }
 
-  // rebar and antennas sticking out of broken wall tops
+  // rebar and antennas sticking out of broken wall tops; a generated map has whole walls, so only the
+  // unfinished walls of the building site get them, and only out of reach (they have no collider)
   let rebar = 0;
-  for (const f of feet) {
+  const bars = block || w.layout.id === 'construction', minTop = block ? 3 : 6;
+  for (const f of bars ? feet : []) {
     for (let tries = 0; tries < 14 && rebar < 70; tries++) {
       const x = f.x0 + rng() * (f.x1 - f.x0), z = rng() < 0.5 ? (rng() < 0.5 ? f.z0 : f.z1) : f.z0 + rng() * (f.z1 - f.z0);
       const xx = rng() < 0.5 ? x : (rng() < 0.5 ? f.x0 : f.x1);
       const h = raycast(w.colliders, xx, 16, z, 0, -1, 0, 20, { noGround: true });
-      if (!h || h.ny < 0.5 || h.y < 3) continue;
+      if (!h || h.ny < 0.5 || h.y < minTop) continue;
       const n = 2 + Math.floor(rng() * 3);
       for (let i = 0; i < n; i++) {
         const len = 0.7 + rng() * 1.4;
@@ -456,8 +460,9 @@ export function addDetails(w) {
     }
   }
 
-  // a lamp post leaning against a building with a cable hanging to the ground
-  {
+  // a lamp post leaning against a building with a cable hanging to the ground: the block's, at its own
+  // coordinates and with its own collider (a generated map gets no collider beyond its layout's)
+  if (block) {
     const x = -33, z = 2;
     if (w.fits(x, z, 0.5, 0.5, 0.2)) {
       w.box(x, 2.8, z, 0.17, 5.8, 0.17, m.metalGray, { collide: false, rz: 0.3 });

@@ -371,6 +371,183 @@ const SHADERS = {
       o.ao = 1 - end * (1 - pleat) * 0.45 - (1 - wrinkle) * 0.15 - stitch * 0.2;
     };
   },
+
+  // ---- wave 15: the looks of the generated maps (made on demand, see themeTextureSet)
+
+  snow(seed) {
+    // Settled snow: soft wind drifts, a few trampled grey patches, glints where the crust catches the light.
+    return (u, v, o) => {
+      const n1 = fbm(u, v, 3, 3, 5, seed);
+      const n2 = fbm(u, v, 16, 16, 3, seed + 1);
+      const drift = fbm(u, v, 2, 6, 4, seed + 3);
+      const glint = smooth(0.9, 0.97, vnoise(u * 256, v * 256, 256, 256, seed + 2));
+      const tread = smooth(0.62, 0.86, fbm(u, v, 5, 5, 4, seed + 4));
+      const L = 0.84 + (n1 - 0.5) * 0.08 + (n2 - 0.5) * 0.05 - tread * 0.12;
+      o.r = L * 0.95; o.g = L * 0.975; o.b = L * 1.02;
+      o.h = n1 * 0.45 + drift * 0.4 + n2 * 0.12 - tread * 0.15;
+      o.rough = 0.66 + (n2 - 0.5) * 0.16 - glint * 0.4 + tread * 0.12;
+      o.ao = 1 - tread * 0.1;
+    };
+  },
+
+  sand(seed) {
+    // Desert sand: wind ripples, fine grain, darker coarse patches and the odd pebble.
+    return (u, v, o) => {
+      const warp = fbm(u, v, 3, 3, 3, seed);
+      const rip = 0.5 + 0.5 * Math.sin((v * 14 + u * 2 + warp * 3) * TAU);
+      const grain = vnoise(u * 300, v * 300, 300, 300, seed + 1);
+      const tone = fbm(u, v, 4, 4, 4, seed + 2);
+      worley(u, v, 22, seed + 5);
+      const peb = smooth(0.2, 0.05, W.f1) * (W.id > 0.86 ? 1 : 0);
+      const L = 0.74 + (tone - 0.5) * 0.14 + (grain - 0.5) * 0.08 - (1 - rip) * 0.05;
+      o.r = mix(L, 0.42, peb); o.g = mix(L * 0.83, 0.36, peb); o.b = mix(L * 0.6, 0.3, peb);
+      o.h = rip * 0.3 + grain * 0.12 + tone * 0.3 + peb * 0.4;
+      o.rough = 0.93 - peb * 0.15;
+      o.ao = 1 - (1 - rip) * 0.08;
+    };
+  },
+
+  adobe(seed) {
+    // Mud plaster over mud brick: straw in it, hand-smoothed swirls, cracks, lighter repairs.
+    return (u, v, o) => {
+      const n1 = fbm(u, v, 3, 3, 5, seed);
+      const n2 = fbm(u, v, 12, 12, 4, seed + 1);
+      const straw = smooth(0.8, 0.9, vnoise(u * 48, v * 192, 48, 192, seed + 2)) * smooth(0.4, 0.62, fbm(u, v, 6, 6, 2, seed + 5));
+      const ridge = 1 - Math.abs(2 * fbm(u, v, 4, 4, 4, seed + 3) - 1);
+      const crack = smooth(0.993, 0.9992, ridge) * smooth(0.5, 0.7, fbm(u, v, 2, 2, 2, seed + 6));
+      const patch = smooth(0.56, 0.74, fbm(u, v, 2, 2, 3, seed + 4));
+      const L = 0.6 + (n1 - 0.5) * 0.14 + (n2 - 0.5) * 0.08 + patch * 0.07 - crack * 0.12;
+      o.r = L + straw * 0.12; o.g = L * 0.79 + straw * 0.1; o.b = L * 0.58 + straw * 0.03;
+      o.h = n1 * 0.6 + n2 * 0.3 + patch * 0.15 - crack * 0.4 + straw * 0.1;
+      o.rough = 0.95;
+      o.ao = 1 - crack * 0.5;
+    };
+  },
+
+  corrugated(seed) {
+    // Painted corrugated sheeting gone to rust: ribs 0.15 m apart, a lapped seam, rust running down.
+    // Tint (the paint) through material.color.
+    return (u, v, o) => {
+      const rib = 0.5 + 0.5 * Math.sin(u * TAU * 8);
+      const prof = smooth(0.1, 0.9, rib);
+      const n = fbm(u, v, 4, 4, 5, seed);
+      const fine = fbm(u, v, 32, 32, 3, seed + 1);
+      // grime running down the ribs, and brown rust in a few patches (not a pattern of red flames)
+      const run = smooth(0.5, 0.85, fbm(u, v, 16, 2, 3, seed + 2));
+      const blot = smooth(0.6, 0.8, fbm(u, v, 3, 3, 5, seed + 3));
+      const rust = clamp01(blot * 0.85 + run * blot * 0.4);
+      const seam = 1 - smooth(0.004, 0.012, Math.min(u, 1 - u));
+      const bolt = (1 - smooth(0.006, 0.012, Math.hypot(((u * 8 + 0.5) % 1) - 0.5, (((v * 2) % 1) - 0.5) * 4) / 8)) * rib;
+      const paint = (0.7 + (n - 0.5) * 0.16) * (1 - run * 0.16);
+      const rr = 0.3 + fine * 0.12;
+      o.r = mix(paint, rr, rust); o.g = mix(paint, rr * 0.66, rust); o.b = mix(paint, rr * 0.46, rust);
+      o.h = prof * 1.2 + rust * (fine - 0.3) * 0.6 - seam * 0.4 + bolt * 0.3;
+      o.rough = mix(0.48, 0.92, rust) + (fine - 0.5) * 0.12;
+      o.metal = (1 - rust) * 0.15 + bolt * 0.5;
+      o.ao = 0.75 + prof * 0.25 - rust * 0.1 - seam * 0.3;
+    };
+  },
+
+  cobble(seed) {
+    // Granite setts in courses, each row shifted, worn domes, soil and moss in the joints.
+    const ROWS = 8, COLS = 7;
+    return (u, v, o) => {
+      const row = Math.floor(v * ROWS), fy = v * ROWS - row;
+      const r = ((row % ROWS) + ROWS) % ROWS;
+      const uu = u * COLS + hash2(r, 1, seed) * 0.9;
+      const colRaw = Math.floor(uu), fx = uu - colRaw;
+      const col = ((colRaw % COLS) + COLS) % COLS;
+      const d = Math.min(Math.min(fx, 1 - fx) * 0.286, Math.min(fy, 1 - fy) * 0.25);
+      const gap = 1 - smooth(0.007, 0.02, d);
+      const dome = smooth(0, 0.07, d);
+      const id = hash2(col, r, seed + 3), id2 = hash2(col, r, seed + 9);
+      const fine = fbm(u, v, 40, 40, 3, seed + 1);
+      const moss = smooth(0.5, 0.8, fbm(u, v, 3, 3, 3, seed + 4)) * gap;
+      const L = 0.4 + id * 0.12 + (fine - 0.5) * 0.12 + dome * 0.04;
+      let rr = L * (1.04 + id2 * 0.08), gg = L * 0.96, bb = L * (0.84 + id2 * 0.06);
+      rr = mix(rr, 0.16, gap); gg = mix(gg, 0.14, gap); bb = mix(bb, 0.11, gap);
+      rr = mix(rr, 0.2, moss * 0.6); gg = mix(gg, 0.26, moss * 0.6); bb = mix(bb, 0.12, moss * 0.6);
+      o.r = rr; o.g = gg; o.b = bb;
+      o.h = dome * 0.8 + (fine - 0.5) * 0.12 - gap * 0.5;
+      o.rough = 0.88 - dome * 0.18 + gap * 0.08;
+      o.ao = 1 - gap * 0.6;
+    };
+  },
+
+  tiles(seed) {
+    // Clay roof tiles: barrel profiles side by side, each course lapping the one below; colour by tint.
+    const COURSES = 6, COLS = 8;
+    return (u, v, o) => {
+      const c = Math.floor(v * COURSES), fy = v * COURSES - c;
+      const cc = ((c % COURSES) + COURSES) % COURSES;
+      const uu = u * COLS + (cc & 1 ? 0.5 : 0);
+      const k = Math.floor(uu), fx = uu - k, kk = ((k % COLS) + COLS) % COLS;
+      const barrel = Math.sin(Math.PI * fx);
+      const lap = smooth(0, 0.12, fy);                 // the shadowed lower lip of the course above
+      const id = hash2(kk, cc, seed);
+      const grime = smooth(0.5, 0.85, fbm(u, v, 3, 6, 3, seed + 2));
+      const fine = fbm(u, v, 32, 32, 3, seed + 1);
+      const L = (0.62 + id * 0.22 + (fine - 0.5) * 0.1) * (1 - grime * 0.3) * (0.55 + 0.45 * lap);
+      o.r = L * 1.05; o.g = L * 0.92; o.b = L * 0.84;
+      o.h = barrel * 0.7 + fy * 0.3 + (fine - 0.5) * 0.1;
+      o.rough = 0.8 + (fine - 0.5) * 0.1;
+      o.ao = (0.65 + 0.35 * lap) * (0.8 + 0.2 * barrel);
+    };
+  },
+
+  timber(seed) {
+    // Weathered horizontal boards, 0.2 m wide, with butt joints and dark gaps; tint through material.color.
+    const ROWS = 10;
+    return (u, v, o) => {
+      const row = Math.floor(v * ROWS), fy = v * ROWS - row;
+      const r = ((row % ROWS) + ROWS) % ROWS;
+      const id = hash2(r, 5, seed);
+      const grain = vnoise(u * 3, v * 160, 3, 160, seed + r) * 0.6 + vnoise(u * 8, v * 320, 8, 320, seed + 7) * 0.4;
+      const j = hash2(r, 1, seed), dj = Math.abs(((u - j + 1.5) % 1) - 0.5);
+      const joint = 1 - smooth(0.002, 0.006, dj);
+      const gap = 1 - smooth(0.03, 0.09, Math.min(fy, 1 - fy));
+      const weather = smooth(0.4, 0.8, fbm(u, v, 3, 3, 4, seed + 2));
+      const L = (0.55 + id * 0.25 + (grain - 0.5) * 0.3) * (1 - gap * 0.75) * (1 - joint * 0.6);
+      o.r = mix(L * 0.62, L * 0.55, weather); o.g = mix(L * 0.45, L * 0.52, weather); o.b = mix(L * 0.3, L * 0.48, weather);
+      o.h = (grain - 0.5) * 0.25 + (1 - gap) * 0.5 - joint * 0.3;
+      o.rough = 0.86 + (grain - 0.5) * 0.1;
+      o.ao = 1 - gap * 0.6;
+    };
+  },
+
+  grass(seed) {
+    // Dry airfield grass: blades in green and straw, bare earth showing through in patches.
+    return (u, v, o) => {
+      const big = fbm(u, v, 3, 3, 4, seed);
+      const dry = smooth(0.35, 0.7, fbm(u, v, 5, 5, 4, seed + 1));
+      const bare = smooth(0.62, 0.78, fbm(u, v, 4, 4, 4, seed + 2));
+      const blade = vnoise(u * 320, v * 96, 320, 96, seed + 3) * 0.5 + vnoise(u * 110, v * 340, 110, 340, seed + 4) * 0.5;
+      const L = 0.32 + (big - 0.5) * 0.12 + (blade - 0.5) * 0.22;
+      let r = mix(L * 0.82, L * 1.35, dry), g = mix(L * 1.08, L * 1.18, dry), b = mix(L * 0.42, L * 0.62, dry);
+      r = mix(r, 0.33, bare * 0.8); g = mix(g, 0.27, bare * 0.8); b = mix(b, 0.19, bare * 0.8);
+      o.r = r; o.g = g; o.b = b;
+      o.h = blade * 0.6 * (1 - bare) + big * 0.3;
+      o.rough = 0.95;
+      o.ao = 0.8 + blade * 0.2;
+    };
+  },
+
+  gravel(seed) {
+    // Track ballast: angular stones in greys and browns, packed tight, rust and oil between the rails.
+    return (u, v, o) => {
+      worley(u, v, 42, seed);
+      const edge = smooth(0, 0.14, W.f2 - W.f1), id = W.id;
+      worley(u, v, 17, seed + 9);
+      const big = smooth(0, 0.1, W.f2 - W.f1) * (W.id > 0.7 ? 1 : 0);
+      const fine = fbm(u, v, 24, 24, 3, seed + 1);
+      const stain = smooth(0.55, 0.8, fbm(u, v, 3, 3, 4, seed + 2));
+      const L = (0.34 + id * 0.16 + (fine - 0.5) * 0.08) * (0.62 + 0.38 * edge) + big * 0.04;
+      o.r = L * (1.02 + stain * 0.12); o.g = L * (0.98 - stain * 0.08); o.b = L * (0.93 - stain * 0.18);
+      o.h = edge * 0.7 + big * 0.4 + id * 0.15;
+      o.rough = 0.9;
+      o.ao = 0.55 + 0.45 * edge;
+    };
+  },
 };
 
 export const TEXTURE_SPECS = [
@@ -383,15 +560,27 @@ export const TEXTURE_SPECS = [
   { id: 'metal', size: 512, strength: 1.8, texWorld: [1.5, 1.5] },
   { id: 'container', size: 512, strength: 4.0, texWorld: [1.0, 1.0] },
   { id: 'sandbag', size: 512, strength: 3.0, texWorld: [1.0, 1.0] },
+  // wave 15: surfaces of the generated maps. onDemand: never photoscanned, not made at start-up but the
+  // first time a map asks for them (themeTextureSet); each new set goes at the end, so the seeds above stay.
+  { id: 'snow', size: 512, strength: 1.4, texWorld: [3.0, 3.0], onDemand: true },
+  { id: 'sand', size: 512, strength: 1.8, texWorld: [3.0, 3.0], onDemand: true },
+  { id: 'adobe', size: 512, strength: 2.2, texWorld: [2.2, 2.2], onDemand: true },
+  { id: 'corrugated', size: 512, strength: 3.2, texWorld: [2.0, 2.0], onDemand: true },
+  { id: 'cobble', size: 512, strength: 3.0, texWorld: [1.5, 1.5], onDemand: true },
+  { id: 'tiles', size: 512, strength: 3.0, texWorld: [1.6, 1.6], onDemand: true },
+  { id: 'timber', size: 512, strength: 2.4, texWorld: [2.0, 2.0], onDemand: true },
+  { id: 'grass', size: 512, strength: 2.0, texWorld: [2.5, 2.5], onDemand: true },
+  { id: 'gravel', size: 512, strength: 3.0, texWorld: [2.0, 2.0], onDemand: true },
 ];
 
 /**
- * Generate every texture set. Yields to the browser between sets so a
+ * Generate every texture set made at start-up. Yields to the browser between sets so a
  * loading bar can paint. Returns {id: {map, normalMap, orm, texWorld}}.
  */
 export async function generateTextures(aniso = 8, onProgress = () => {}) {
   const out = {};
   for (let i = 0; i < TEXTURE_SPECS.length; i++) {
+    if (TEXTURE_SPECS[i].onDemand) continue;
     onProgress(i / TEXTURE_SPECS.length, TEXTURE_SPECS[i].id);
     await new Promise((r) => setTimeout(r, 0));
     out[TEXTURE_SPECS[i].id] = generateSet(i, aniso);
@@ -405,6 +594,25 @@ function generateSet(i, aniso) {
   const spec = TEXTURE_SPECS[i];
   const set = buildSet(spec.size, SHADERS[spec.id](1000 + i * 101), spec.strength, aniso);
   set.texWorld = spec.texWorld;
+  return set;
+}
+
+const ON_DEMAND = new Map();
+
+/**
+ * A texture set of the generated maps (an onDemand row of TEXTURE_SPECS), made on the first call and
+ * kept. It is not one of the shared sets of the pack: a map that uses it frees its GPU copy with the map
+ * (World.dispose), and the next map that wants it uploads the same pixels again.
+ */
+export function themeTextureSet(kind, aniso = 8) {
+  let set = ON_DEMAND.get(kind);
+  if (!set) {
+    const i = TEXTURE_SPECS.findIndex((s) => s.id === kind && s.onDemand);
+    if (i < 0) throw new Error('no generated texture set ' + kind);
+    set = generateSet(i, aniso);
+    ON_DEMAND.set(kind, set);
+  }
+  for (const k of ['map', 'normalMap', 'orm']) if (set[k].anisotropy !== aniso) { set[k].anisotropy = aniso; set[k].needsUpdate = true; }
   return set;
 }
 
@@ -493,7 +701,7 @@ export function makeMacroNoise() {
 // missing or broken file never breaks the game.
 // ======================================================================
 
-export const KINDS = TEXTURE_SPECS.map((s) => s.id);
+export const KINDS = TEXTURE_SPECS.filter((s) => !s.onDemand).map((s) => s.id);
 
 let PACK = null;
 const MATERIALS = new Map();
@@ -642,8 +850,9 @@ export async function loadTexturePack({ aniso = 8, onProgress = () => {}, base =
   const sets = {};
   const state = { sets, source: 'procedural', loaded: [], missing: [] };
   for (let i = 0; i < TEXTURE_SPECS.length; i++) {
+    if (TEXTURE_SPECS[i].onDemand) continue;   // the generated maps make theirs when they need them
     const kind = TEXTURE_SPECS[i].id;
-    onProgress(i / TEXTURE_SPECS.length, kind);
+    onProgress(i / KINDS.length, kind);
     await new Promise((r) => setTimeout(r, 0));   // let the loading bar paint
     let set = null;
     if (scans) { try { set = await loadScan(kind, base, aniso); } catch (e) { set = null; } }
