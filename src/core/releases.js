@@ -104,6 +104,18 @@ export const RELEASES = [
         ru: 'Перезапуск лаунчера на другой видеокарте спрашивает подтверждение окном браузера. Лаунчер без Chrome и Edge и повторный запуск при занятом профиле не проверялись, звук на слух и настоящий геймпад тоже.',
         en: 'Restarting the launcher on another graphics card asks for confirmation in a browser dialog. The launcher without Chrome and Edge, a busy profile, sound by ear and a real gamepad were not tried.',
       },
+      {
+        ru: 'Дождь, снег и пыль идут и внутри зданий: погода не учитывает крыши.',
+        en: 'Rain, snow and dust also fall inside buildings: the weather ignores roofs.',
+      },
+      {
+        ru: 'На «Порту» над морем стоит невидимая стена у края набережной: граната, брошенная в море, отскакивает назад.',
+        en: 'On "Port" there is an invisible wall over the sea at the edge of the quay: a grenade thrown into the sea bounces back.',
+      },
+      {
+        ru: 'Окно «Что нового» выше экрана: мышью и клавиатурой оно листается, геймпадом нет.',
+        en: 'The "What\'s new" window is taller than the screen: it scrolls with the mouse and keyboard but not with a gamepad.',
+      },
     ],
   },
   {

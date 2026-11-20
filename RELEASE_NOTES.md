@@ -24,6 +24,9 @@ Known issues:
 - Car windows are opaque and the inside shows only on open and burnt cars; some models are longer than their collision box and stick out up to a quarter of a metre.
 - The shop with ten map cards is taller than a 720 px window, so it scrolls, and the map schemes finish drawing within about a second.
 - Restarting the launcher on another graphics card asks for confirmation in a browser dialog. The launcher without Chrome and Edge, a busy profile, sound by ear and a real gamepad were not tried.
+- Rain, snow and dust also fall inside buildings: the weather ignores roofs.
+- On "Port" there is an invisible wall over the sea at the edge of the quay: a grenade thrown into the sea bounces back.
+- The "What's new" window is taller than the screen: it scrolls with the mouse and keyboard but not with a gamepad.
 
 ## 1.4.1: Fixes after wave 14
 
