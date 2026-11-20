@@ -335,28 +335,40 @@ const SHADERS = {
   },
 
   sandbag(seed) {
-    // 3 rows of bags, 2 bags per row, running bond.
+    // The cloth of one bag, unrolled: u runs along the bag (the gathered, tied ends at both edges),
+    // v around it (v = 0 underneath, the sewn seam at v = 0.8). World.sandbags lays every bag over
+    // the whole texture; a flat box with world UVs shows a stretch of plain cloth.
     return (u, v, o) => {
-      const rows = 3;
-      const row = Math.floor(v * rows);
-      const fy = v * rows - row;
-      const uu = u * 2 + (row & 1 ? 0.5 : 0);
-      const colRaw = Math.floor(uu);
-      const fx = uu - colRaw;
-      const col = ((colRaw % 2) + 2) % 2;
-      const id = hash2(col, row, seed);
-      const pillow = Math.pow(Math.sin(Math.PI * clamp01(fx)) * Math.sin(Math.PI * clamp01(fy)), 0.6);
-      const weaveX = 0.5 + 0.5 * Math.sin(u * 700), weaveY = 0.5 + 0.5 * Math.sin(v * 700);
-      const weave = weaveX * weaveY;
-      const dirt = fbm(u, v, 4, 4, 4, seed + 1);
-      const seam = 1 - smooth(0.0, 0.07, Math.min(fx, 1 - fx, fy * 0.6, (1 - fy) * 0.6));
-      const L = 0.82 + id * 0.3 + (dirt - 0.5) * 0.4 + (weave - 0.5) * 0.12;
-      o.r = 0.55 * L * (1 - seam * 0.4);
-      o.g = 0.47 * L * (1 - seam * 0.4);
-      o.b = 0.33 * L * (1 - seam * 0.4);
-      o.h = pillow * 1.0 + (weave - 0.5) * 0.1 - seam * 0.4;
-      o.rough = 0.95;
-      o.ao = 0.55 + pillow * 0.45;
+      // plain weave of coarse jute: threads over and under, about 4 mm apart
+      const tu = u * 128, tv = v * 128;
+      const over = (Math.floor(tu) + Math.floor(tv)) & 1;
+      const thread = over ? Math.sin(Math.PI * (tu - Math.floor(tu))) : Math.sin(Math.PI * (tv - Math.floor(tv)));
+      const slub = vnoise(u * 64, v * 8, 64, 8, seed + 5);              // uneven yarn
+      // wrinkles of a filled bag, and the pleats where the ends are gathered and tied
+      const wrinkle = fbm(u, v, 6, 3, 4, seed + 2);
+      const d = Math.min(u, 1 - u);                                       // distance to the nearer end
+      const end = 1 - smooth(0.02, 0.16, d);
+      const pleat = 0.5 + 0.5 * Math.sin(v * TAU * 12 + fbm(u, v, 2, 4, 2, seed + 3) * 6);
+      // the tie cord round the neck of each end, a twisted string
+      const cordK = 1 - smooth(0.0, 0.014, Math.abs(d - 0.05));
+      const twist = 0.5 + 0.5 * Math.sin((v * 40 + (u < 0.5 ? u : 1 - u) * 260) * TAU);
+      // the long seam with its stitches
+      const sd = Math.abs(v - 0.8);
+      const seam = 1 - smooth(0.0, 0.012, sd);
+      const stitch = (1 - smooth(0.012, 0.02, sd)) * smooth(0.006, 0.012, sd) * (((u * 90) % 1) < 0.55 ? 1 : 0);
+      // dirt: patchy, heavier underneath where the bag sat in the mud
+      const dirtN = fbm(u, v, 4, 4, 4, seed + 1);
+      const under = 1 - smooth(0.05, 0.3, Math.min(v, 1 - v));
+      const dirt = clamp01(smooth(0.45, 0.8, dirtN) * 0.6 + under * 0.5);
+      let L = 0.86 + (slub - 0.5) * 0.18 + (thread - 0.5) * 0.16 - (1 - wrinkle) * 0.12 - end * pleat * 0.18;
+      L *= 1 - dirt * 0.38;
+      let r = 0.6 * L, g = 0.51 * L, b = 0.36 * L;
+      r = mix(r, 0.3, cordK * 0.85); g = mix(g, 0.27, cordK * 0.85); b = mix(b, 0.22, cordK * 0.85);
+      r *= 1 - stitch * 0.35 - seam * 0.12; g *= 1 - stitch * 0.35 - seam * 0.12; b *= 1 - stitch * 0.35 - seam * 0.12;
+      o.r = r; o.g = g; o.b = b;
+      o.h = thread * 0.12 + slub * 0.05 + wrinkle * 0.45 + end * pleat * 0.7 + cordK * (0.6 + twist * 0.3) + seam * 0.25 - stitch * 0.15;
+      o.rough = 0.93 - cordK * 0.05;
+      o.ao = 1 - end * (1 - pleat) * 0.45 - (1 - wrinkle) * 0.15 - stitch * 0.2;
     };
   },
 };

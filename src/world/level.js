@@ -52,6 +52,51 @@ function bakeCylinderGeometry(rt, rb, h, seg, cx, cy, cz, rx, rz, texW, texH) {
   return g;
 }
 
+// One sandbag: a filled cloth pillow, gathered and tied at both ends. Rings of a rounded box
+// section along the bag, shrinking to a point at the ends. u runs along the bag, v around it from
+// underneath, as the sandbag texture expects (materials.js). Local space: length along x, centred.
+const BAG_U = [0, 0.05, 0.17, 0.5, 0.83, 0.95, 1];
+const BAG_V = 8;
+function bagGeometry(L, W, H, tint) {
+  const nU = BAG_U.length, ring = BAG_V + 1;
+  const pos = new Float32Array(nU * ring * 3), uv = new Float32Array(nU * ring * 2), col = new Float32Array(nU * ring * 3);
+  const sq = (c, p) => Math.sign(c) * Math.pow(Math.abs(c), p);
+  for (let i = 0; i < nU; i++) {
+    const u = BAG_U[i];
+    const e = Math.abs(2 * u - 1);
+    const s = Math.pow(Math.max(0, 1 - Math.pow(e, 6)), 0.32);    // full along the middle, gathered at the ends
+    const shade = 0.72 + 0.28 * s;                                  // the creases at the ties are darker
+    for (let j = 0; j < ring; j++) {
+      const phi = -Math.PI / 2 + (2 * Math.PI * j) / BAG_V;        // from underneath, round by the front
+      const k = (i * ring + j) * 3;
+      // a squashed, rounded section: flatter top and bottom where the bags press on each other
+      pos[k] = (u - 0.5) * L;
+      pos[k + 1] = sq(Math.sin(phi), 0.55) * (H / 2) * s;
+      pos[k + 2] = sq(Math.cos(phi), 0.7) * (W / 2) * (0.35 + 0.65 * s);
+      uv[(i * ring + j) * 2] = u;
+      uv[(i * ring + j) * 2 + 1] = j / BAG_V;
+      col[k] = tint[0] * shade; col[k + 1] = tint[1] * shade; col[k + 2] = tint[2] * shade;
+    }
+  }
+  const idx = [];
+  for (let i = 0; i < nU - 1; i++) {
+    for (let j = 0; j < BAG_V; j++) {
+      const a = i * ring + j, b = a + 1, c = a + ring, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Cloth shades a bag can have: fresh jute, faded, greenish army stock, grey with dust. */
+const BAG_TINTS = [[1, 1, 1], [1.06, 1.02, 0.92], [0.9, 0.95, 0.84], [0.84, 0.83, 0.82], [0.96, 0.9, 0.82]];
+
 /**
  * The triangles of many geometries as one mesh without materials: positions, and normals when
  * asked. The shadow pass and the ambient occlusion pass do not look at materials, so for them
@@ -112,6 +157,7 @@ export class World {
     this.pickupPoints = [];
     this.fireSpots = [];
     this.batches = new Map();
+    this.casterProxies = [];   // plain shapes that cast the shadow of detailed geometry (see _flush)
     this.root = new THREE.Group();
     this.scene.add(this.root);
     this.playerStart = { x: 0, z: 36, yaw: 0 };
@@ -143,6 +189,8 @@ export class World {
       wood: P(T.wood),
       woodDark: P(T.wood, { color: 0x7a6858 }),
       sandbag: P(T.sandbag),
+      // the bags of a sandbag wall: one cloth texture over each bag, shaded per bag by vertex colour
+      sandbagBag: (() => { const b = P(T.sandbag); b.vertexColors = true; b.userData.casterProxy = true; return b; })(),
       metalGray: P(T.metal, { color: 0x6c7075 }),
       metalGreen: P(T.metal, { color: 0x4a5c45 }),
       metalRed: P(T.metal, { color: 0x9a2a1e }),
@@ -165,7 +213,7 @@ export class World {
       [this.m.concrete, 'concrete'], [this.m.concreteDark, 'concrete'], [this.m.concreteWarm, 'concrete'],
       [this.m.plaster, 'plaster'], [this.m.plasterWarm, 'plaster'], [this.m.plasterGreen, 'plaster'], [this.m.plasterBlue, 'plaster'],
       [this.m.brick, 'brick'], [this.m.brickDark, 'brick'], [this.m.wood, 'wood'], [this.m.woodDark, 'wood'],
-      [this.m.sandbag, 'sand'], [this.m.metalGray, 'metal'], [this.m.metalGreen, 'metal'], [this.m.metalRed, 'metal'],
+      [this.m.sandbag, 'sand'], [this.m.sandbagBag, 'sand'], [this.m.metalGray, 'metal'], [this.m.metalGreen, 'metal'], [this.m.metalRed, 'metal'],
       [this.m.metalChar, 'metal'], [this.m.metalYellow, 'metal'], [this.m.containerRed, 'metal'], [this.m.containerBlue, 'metal'],
       [this.m.containerGreen, 'metal'], [this.m.containerRust, 'metal'], [this.m.rubber, 'concrete'],
     ]);
@@ -210,7 +258,8 @@ export class World {
         // casting by itself. Everything else casts through the shared shadow mesh built below.
         const cutout = mat.alphaTest > 0 || !!mat.alphaMap;
         mesh.castShadow = !overlay && cutout;
-        if (!overlay && !cutout) {
+        // a sandbag wall casts the shadow of a plain block (casterProxies) instead of every bag
+        if (!overlay && !cutout && !mat.userData.casterProxy) {
           let sameSide = casters.get(mat.side);
           if (!sameSide) casters.set(mat.side, (sameSide = []));
           sameSide.push(geo);
@@ -224,6 +273,12 @@ export class World {
       }
     }
     this.batches.clear();
+    if (this.casterProxies.length) {
+      let sameSide = casters.get(THREE.FrontSide);
+      if (!sameSide) casters.set(THREE.FrontSide, (sameSide = []));
+      sameSide.push(...this.casterProxies);
+      this.casterProxies = [];
+    }
     this.root.add(chunks);
     for (const [side, geos] of casters) this.root.add(shadowCaster(geos, side));
     // The ambient occlusion pass draws depth and normals with one material for everything:
@@ -273,6 +328,7 @@ export class World {
   /**
    * Wall along an axis. axis 'x' runs along x at z=fixed, 'z' runs along z at x=fixed.
    * openings: [{from,to,bottom,top}] in world units along the axis.
+   * Returns the pieces as they stand: [{s, e, top, open}] (open: a hole from the ground up).
    */
   wall(axis, fixed, a0, a1, thick, H, openings, mat, opts = {}) {
     const breakage = opts.breakage || 0;
@@ -293,6 +349,7 @@ export class World {
       if (axis === 'x') this.box(mid, cy, fixed, len, hh, thick, mat, { structural: true });
       else this.box(fixed, cy, mid, thick, hh, len, mat, { structural: true });
     };
+    const pieces = [];
     for (const [s, e] of spans) {
       const mid = (s + e) / 2;
       const cover = openings.filter((o) => o.from <= mid && o.to >= mid).sort((p, q) => p.bottom - q.bottom);
@@ -308,7 +365,9 @@ export class World {
         if (cursor >= topH) break;
       }
       if (topH > cursor + 0.02) add(s, e, cursor, topH);
+      pieces.push({ s, e, top: topH, open: cover.some((o) => o.bottom <= 0.02 && o.top >= topH) });
     }
+    return pieces;
   }
 
   // ----------------------------------------------------------- buildings
@@ -352,10 +411,18 @@ export class World {
     };
 
     // West and east walls span the full depth, north and south fit between them.
-    this.wall('z', x0 + t / 2, z0, z1, t, H, sideOpenings('w', z0, z1), mat, { breakage });
-    this.wall('z', x1 - t / 2, z0, z1, t, H, sideOpenings('e', z0, z1), mat, { breakage });
-    this.wall('x', z0 + t / 2, x0 + t, x1 - t, t, H, sideOpenings('n', x0 + t, x1 - t), mat, { breakage });
-    this.wall('x', z1 - t / 2, x0 + t, x1 - t, t, H, sideOpenings('s', x0 + t, x1 - t), mat, { breakage });
+    const firstWindow = this.windows.length;
+    const wSpans = this.wall('z', x0 + t / 2, z0, z1, t, H, sideOpenings('w', z0, z1), mat, { breakage });
+    const eSpans = this.wall('z', x1 - t / 2, z0, z1, t, H, sideOpenings('e', z0, z1), mat, { breakage });
+    const nSpans = this.wall('x', z0 + t / 2, x0 + t, x1 - t, t, H, sideOpenings('n', x0 + t, x1 - t), mat, { breakage });
+    const sSpans = this.wall('x', z1 - t / 2, x0 + t, x1 - t, t, H, sideOpenings('s', x0 + t, x1 - t), mat, { breakage });
+    // wave 15 (R02.7): sills, lintels, frames, floor belts, cornices; no colliders, no random numbers
+    this._facade({
+      w: { axis: 'z', face: x0, out: -1, a0: z0, a1: z1, spans: wSpans },
+      e: { axis: 'z', face: x1, out: 1, a0: z0, a1: z1, spans: eSpans },
+      n: { axis: 'x', face: z0, out: -1, a0: x0 + t, a1: x1 - t, spans: nSpans },
+      s: { axis: 'x', face: z1, out: 1, a0: x0 + t, a1: x1 - t, spans: sSpans },
+    }, this.windows.slice(firstWindow), H, storeys, t, mat);
 
     // Ground floor slab (visual only) and broken upper floors.
     this.box(cx, 0.015, cz, w - 2 * t, 0.03, d - 2 * t, this.m.floor, { collide: false });
@@ -418,6 +485,86 @@ export class World {
     }
     this.footprints.push({ x0, x1, z0, z1 });
     return { x0, x1, z0, z1 };
+  }
+
+  /**
+   * Depth for the facades of a building (R02.7): at every window a sill, a lintel, surrounds and
+   * an empty frame set back in the opening; a belt at every floor; a cornice and a coping on top
+   * of each piece of wall that still stands near its full height. Drawn only: no colliders, and
+   * no random numbers (the level's sequence stays as it was). The wall pieces as they broke
+   * (sides[k].spans, from wall()) decide where trim can go, so none of it hangs in the air.
+   * sides: {n, s, w, e: {axis, face, out, a0, a1, spans}}; wins: the building's windows.
+   */
+  _facade(sides, wins, H, storeys, t, wallMat) {
+    const m = this.m;
+    const trimMat = wallMat === m.concrete ? m.concreteWarm : m.concrete;
+    const vis = { collide: false, structural: true };
+    // a box along a side: centred at `a` along the wall, at height y; across the wall from `inn`
+    // metres inside the outer face to `out` metres outside it (negative: set back into the opening)
+    const trim = (S, a, y, along, h, outD, innD, mat) => {
+      const across = outD + innD;
+      if (across <= 0.001 || along <= 0.001 || h <= 0.001) return;
+      const c = S.face + S.out * (outD - innD) / 2;
+      if (S.axis === 'x') this.box(a, y, c, along, h, across, mat, vis);
+      else this.box(c, y, a, across, h, along, mat, vis);
+    };
+    // how high the wall stands everywhere between a0 and a1 (0 where it is open)
+    const topAt = (S, a0, a1) => {
+      let top = Infinity;
+      for (const p of S.spans) if (p.e > a0 && p.s < a1) top = Math.min(top, p.open ? 0 : p.top);
+      return top === Infinity ? 0 : top;
+    };
+    // at a corner the trim of the north and south walls runs on over the end of the side wall,
+    // and that of the side walls over the outer face of the other: only where that wall stands
+    const corner = (key, end) => {
+      const S = sides[key];
+      const other = S.axis === 'x' ? (end === 0 ? sides.w : sides.e) : (end === 0 ? sides.n : sides.s);
+      const at = S.axis === 'x' ? S.face : (S.out < 0 ? other.a0 : other.a1);
+      return { other, at, ext: S.axis === 'x' ? t + 0.08 : 0.08 };
+    };
+    const band = (key, p, y, h, outD, innD, need) => {
+      const S = sides[key];
+      let a0 = p.s, a1 = p.e;
+      for (const end of [0, 1]) {
+        if (Math.abs((end === 0 ? a0 : a1) - (end === 0 ? S.a0 : S.a1)) > 0.01) continue;
+        const k = corner(key, end);
+        if (topAt(k.other, k.at - 0.3, k.at + 0.3) < need) continue;
+        if (end === 0) a0 -= k.ext; else a1 += k.ext;
+      }
+      trim(S, (a0 + a1) / 2, y, a1 - a0, h, outD, innD, trimMat);
+    };
+
+    for (const r of wins) {
+      const S = sides[r.side];
+      const wf = r.c - 0.7, wt = r.c + 0.7, hgt = r.top - r.bottom, midY = (r.top + r.bottom) / 2;
+      const top = topAt(S, wf - 0.2, wt + 0.2);
+      if (top < r.bottom + 0.3) continue;                      // the wall is gone around it
+      trim(S, r.c, r.bottom - 0.045, 1.66, 0.09, 0.1, t * 0.6, trimMat);   // sill, also lining the reveal floor
+      if (top < r.top + 0.05) continue;
+      trim(S, wf - 0.07, midY, 0.14, hgt, 0.035, 0.02, trimMat);        // surrounds
+      trim(S, wt + 0.07, midY, 0.14, hgt, 0.035, 0.02, trimMat);
+      if (top >= r.top + 0.25) trim(S, r.c, r.top + 0.1, 1.68, 0.2, 0.055, 0.02, trimMat);   // lintel
+      // an empty frame, set back in the opening (the glass is long gone)
+      trim(S, r.c, r.top - 0.035, 1.4, 0.07, -0.14, 0.22, m.woodDark);
+      trim(S, r.c, r.bottom + 0.035, 1.4, 0.07, -0.14, 0.22, m.woodDark);
+      trim(S, wf + 0.035, midY, 0.07, hgt, -0.14, 0.22, m.woodDark);
+      trim(S, wt - 0.035, midY, 0.07, hgt, -0.14, 0.22, m.woodDark);
+      trim(S, r.c, midY, 0.05, hgt, -0.15, 0.21, m.woodDark);
+    }
+
+    for (const key of ['n', 's', 'w', 'e']) {
+      for (const p of sides[key].spans) {
+        if (p.open) continue;
+        for (let k = 1; k < storeys; k++) {
+          const y = k * STOREY + 0.02;
+          if (p.top >= y + 0.3) band(key, p, y, 0.16, 0.07, 0.02, y + 0.3);   // belt between floors
+        }
+        if (p.top >= H - 1.2 && p.top >= 2.6) {
+          band(key, p, p.top - 0.5, 0.24, 0.12, 0.02, p.top - 0.5);         // cornice under the parapet
+          band(key, p, p.top + 0.04, 0.08, 0.06, t + 0.04, p.top);          // coping on the wall top
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------------- rubble
@@ -486,9 +633,58 @@ export class World {
     this.box(cx, 0.88, cz, horiz ? w - 0.1 : 0.35, 0.16, horiz ? 0.35 : d - 0.1, this.m.concrete, { collide: false });
   }
 
+  /**
+   * A wall of sandbags, 1 m high and 0.7 m thick: the same block collider as always, drawn as
+   * rows of filled bags in two lines, the rows offset by half a bag with a bag laid across at
+   * each end. Sizes, tilts and cloth shades vary bag by bag from a generator seeded by the wall's
+   * own position, so the level's random sequence is not touched.
+   */
   sandbags(cx, cz, len = 3, alongX = true) {
     const w = alongX ? len : 0.7, d = alongX ? 0.7 : len;
-    this.box(cx, 0.5, cz, w, 1.0, d, this.m.sandbag, { kind: 'sand' });
+    this.addCollider(makeBox(cx, 0.5, cz, w, 1.0, d, { kind: 'sand' }));
+    // the shadow maps get a block a little inside the bags, so the bags' sunlit faces stay lit
+    const proxy = new THREE.BoxGeometry(w - 0.16, 0.9, d - 0.16).toNonIndexed();
+    proxy.translate(cx, 0.45, cz);
+    for (const k of Object.keys(proxy.attributes)) if (k !== 'position') proxy.deleteAttribute(k);
+    this.casterProxies.push(proxy);
+    const rnd = makeRng((Math.round(cx * 100) * 73856093) ^ (Math.round(cz * 100) * 19349663) ^ (Math.round(len * 100) * 83492791) ^ (alongX ? 1 : 2));
+    const T = 0.7, ROWS = 6, PITCH = 0.165, BAG_H = 0.2;
+    const n = Math.max(2, Math.round(len / 0.6));
+    const step = len / n;
+    const mat = this.m.sandbagBag;
+    const turn = new THREE.Matrix4(), place = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+    // a: along the wall from its centre, c: across it, yawAcross: the bag lies across the wall
+    const bag = (a, y, c, L, W, yawAcross) => {
+      const tint = BAG_TINTS[Math.floor(rnd() * BAG_TINTS.length)];
+      const k = 0.88 + rnd() * 0.2;
+      const g = bagGeometry(L * (0.95 + rnd() * 0.08), W * (0.94 + rnd() * 0.1), BAG_H * (0.88 + rnd() * 0.2), [tint[0] * k, tint[1] * k, tint[2] * k]);
+      const yaw = (alongX ? 0 : Math.PI / 2) + (yawAcross ? Math.PI / 2 : 0) + (rnd() - 0.5) * 0.09 + (rnd() < 0.5 ? Math.PI : 0);
+      e.set((rnd() - 0.5) * 0.06, yaw, (rnd() - 0.5) * 0.08);
+      const jx = (rnd() - 0.5) * 0.03, jz = (rnd() - 0.5) * 0.03;
+      p.set(cx + (alongX ? a : c) + jx, y, cz + (alongX ? c : a) + jz);
+      place.compose(p, q.setFromEuler(e), one);
+      g.applyMatrix4(turn.copy(place));
+      this._addGeo(mat, g);
+    };
+    for (let r = 0; r < ROWS; r++) {
+      const y = BAG_H / 2 + r * PITCH;
+      if (r % 2 === 0) {
+        for (let i = 0; i < n; i++) {
+          const a = -len / 2 + step * (i + 0.5);
+          bag(a, y, -T / 4, step + 0.06, T / 2 + 0.02, false);
+          bag(a, y, T / 4, step + 0.06, T / 2 + 0.02, false);
+        }
+      } else {
+        for (let i = 0; i < n - 1; i++) {
+          const a = -len / 2 + step * (i + 1);
+          bag(a, y, -T / 4, step + 0.06, T / 2 + 0.02, false);
+          bag(a, y, T / 4, step + 0.06, T / 2 + 0.02, false);
+        }
+        // a bag across the wall closes each end of the offset row
+        bag(-len / 2 + step / 4, y, 0, T + 0.06, step / 2 + 0.03, true);
+        bag(len / 2 - step / 4, y, 0, T + 0.06, step / 2 + 0.03, true);
+      }
+    }
   }
 
   car(cx, cz, yaw = 0, paint = this.m.metalChar) {

@@ -22,6 +22,8 @@ import { createGamepad } from './player/gamepad.js';
 import { createBigMap } from './ui/bigmap.js';
 import { createKeyScreen } from './ui/keys.js';
 import { createGpuInfo } from './ui/gpu.js';
+import { createWeather } from './world/weather.js';
+import { createPlayerShadow } from './player/shadow.js';
 
 const STEP = 1 / PHYSICS_HZ;
 
@@ -60,6 +62,9 @@ class Game {
     }
     // wave 14: the graphics card in the settings, and the hint in the main menu on integrated graphics
     this.gpuInfo = createGpuInfo(this);
+    // wave 15: weather particles and the light of the first map (core/atmosphere.js)
+    this.gr.weather = createWeather(this.gr);
+    this.gr.applyAtmosphere('block');
 
     const aniso = Math.min(QUALITY[this.settings.quality].aniso, this.gr.renderer.capabilities.getMaxAnisotropy());
     // Photoscans are optional files. The setting and ?noscans in the address leave them out.
@@ -79,6 +84,7 @@ class Game {
     this.scatter = createScatter(this.gr.scene, this.world, this.settings.quality);
     this.gr.addNoAO(this.scatter.group); // clutter is too small to matter for ambient occlusion
     this.player = createPlayer(this);
+    this.playerShadow = createPlayerShadow(this);   // wave 15: the body's shadow, shadow maps only
     this.input = createInput(this);
     this.weapons = new Shooting(this);
     this.enemies = createSquad(this);
@@ -440,6 +446,7 @@ class Game {
       if ((this.frameNo = (this.frameNo || 0) + 1) % 90 === 0) this.gr.prepareScene();
     }
     this.gr.viewScene.visible = st === 'playing' || st === 'victory';
+    if (this.playerShadow) this.playerShadow.update();
     if (!this.skipRender) this.gr.render(st === 'paused' || st === 'shop' ? 0 : dt);
 
     // automatic quality control

@@ -16,6 +16,7 @@ import { CSM } from 'three/addons/csm/CSM.js';
 import { makeDetailNormal, makeMacroNoise } from './materials.js';
 import { QUALITY } from '../config.js';
 import { gpuInfo } from '../core/gpu.js';
+import { ATMOSPHERES, atmosphereFor, sunDirection } from '../core/atmosphere.js';
 
 /**
  * The graphics a WebGL context runs on. The unmasked name comes from WEBGL_debug_renderer_info where
@@ -30,9 +31,6 @@ function readGpu(gl) {
   return gpuInfo(raw);
 }
 
-const SUN_ELEVATION = 17;   // degrees, low golden-hour sun
-const SUN_AZIMUTH = 250;    // degrees
-
 // Light shafts: bright sky around the sun is smeared along the line to the sun, so buildings
 // and the weapon cut visible beams out of the haze. Screen space, HDR, before bloom.
 const RAYS_SHADER = {
@@ -42,6 +40,7 @@ const RAYS_SHADER = {
     sunUv: { value: new THREE.Vector2(0.5, 0.5) },
     intensity: { value: 0 },
     aspect: { value: 1 },
+    color: { value: new THREE.Vector3(1.0, 0.8, 0.56) },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -53,6 +52,7 @@ const RAYS_SHADER = {
     uniform sampler2D tDiffuse;
     uniform vec2 sunUv;
     uniform float intensity, aspect;
+    uniform vec3 color;
     varying vec2 vUv;
     float hash(vec2 p) {
       p = fract(p * vec2(123.34, 456.21));
@@ -77,7 +77,7 @@ const RAYS_SHADER = {
       }
       acc /= wsum;
       float fall = smoothstep(0.03, 0.3, dist) / (1.0 + dist * dist * 3.0);
-      vec3 rays = vec3(1.0, 0.8, 0.56) * acc * fall * intensity;
+      vec3 rays = color * acc * fall * intensity;
       gl_FragColor = vec4(base.rgb + rays, base.a);
     }`,
 };
@@ -95,6 +95,7 @@ const GRADE_SHADER = {
     caAmount: { value: 0.012 },
     fade: { value: 1 },
     flash: { value: 0 },
+    tint: { value: new THREE.Vector3(1.015, 1.0, 0.975) },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -105,6 +106,7 @@ const GRADE_SHADER = {
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
     uniform float time, vignette, grain, saturation, contrast, damage, lowHealth, caAmount, fade, flash;
+    uniform vec3 tint;
     varying vec2 vUv;
     float hash(vec2 p) {
       p = fract(p * vec2(123.34, 456.21));
@@ -124,7 +126,7 @@ const GRADE_SHADER = {
       float sat = saturation * (1.0 - lowHealth * 0.55);
       col = mix(vec3(l), col, sat);
       col = (col - 0.5) * contrast + 0.5;
-      col *= vec3(1.015, 1.0, 0.975);
+      col *= tint;
 
       float vig = smoothstep(0.12, 0.62, r2 * 2.0);
       col *= 1.0 - vignette * vig;
@@ -138,6 +140,52 @@ const GRADE_SHADER = {
       gl_FragColor = vec4(max(col, 0.0), 1.0);
     }`,
 };
+
+// The night sky for the probe that bakes the background and the image based light: a dark
+// gradient, the orange glow of the city at the horizon, stars and the moon. Linear HDR values.
+const NIGHT_SKY_SHADER = {
+  uniforms: {
+    moonDir: { value: new THREE.Vector3(0, 1, 0) },
+    moonColor: { value: new THREE.Color(0xc8d4ff) },
+    horizon: { value: new THREE.Color(0x1d2840) },
+    zenith: { value: new THREE.Color(0x03050c) },
+    glow: { value: new THREE.Color(0x3a2414) },
+  },
+  vertexShader: /* glsl */`
+    varying vec3 vDir;
+    void main() {
+      vDir = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    uniform vec3 moonDir, moonColor, horizon, zenith, glow;
+    varying vec3 vDir;
+    float hash(vec3 p) {
+      p = fract(p * 0.3183099 + 0.1);
+      p *= 17.0;
+      return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+    void main() {
+      vec3 d = normalize(vDir);
+      float h = max(d.y, 0.0);
+      vec3 col = mix(horizon, zenith, pow(h, 0.4));
+      col += glow * exp(-h * 14.0);
+      vec3 cell = floor(d * 380.0);
+      float s = hash(cell);
+      float star = step(0.9965, s) * smoothstep(0.02, 0.3, h);
+      col += vec3(0.75, 0.82, 1.0) * star * (0.15 + 0.6 * fract(s * 117.0));
+      float m = dot(d, normalize(moonDir));
+      col += moonColor * (smoothstep(0.99955, 0.9997, m) * 3.0 + pow(max(m, 0.0), 600.0) * 0.12 + pow(max(m, 0.0), 24.0) * 0.012);
+      if (d.y < 0.0) col = horizon * 0.35;
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+};
+
+/** sRGB components 0..1 of a hex colour (no colour management: shader tints are written in display values). */
+const hexRgb = (hex, out) => out.set(((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255);
+
+/** Candela of the point light at a street lamp at night (decay 2, reach 24 m). */
+const LAMP_INTENSITY = 70;
 
 export class GameRenderer {
   constructor(canvas, settings) {
@@ -183,14 +231,21 @@ export class GameRenderer {
     this.scene.add(this.camera);
     this.viewScene.add(this.viewCamera);
 
-    this.sunDir = new THREE.Vector3(
-      Math.cos(THREE.MathUtils.degToRad(SUN_ELEVATION)) * Math.sin(THREE.MathUtils.degToRad(SUN_AZIMUTH)),
-      Math.sin(THREE.MathUtils.degToRad(SUN_ELEVATION)),
-      Math.cos(THREE.MathUtils.degToRad(SUN_ELEVATION)) * Math.cos(THREE.MathUtils.degToRad(SUN_AZIMUTH)),
-    ).normalize();
+    // Sun, sky, fog, exposure and grade come from an atmosphere preset (core/atmosphere.js).
+    // The game applies one with applyAtmosphere(); render() applies the block's if none was.
+    const d = sunDirection(ATMOSPHERES.block);
+    this.sunDir = new THREE.Vector3(d.x, d.y, d.z).normalize();
+    /** The applied preset and its id; null until applyAtmosphere(). */
+    this.atm = null;
+    this.atmosphereId = null;
+    /** Particles around the camera (world/weather.js), attached by the game: {set, update, clear, dispose}. */
+    this.weather = null;
+    this.lampLights = [];   // point lights kept at the nearest street lamps (night)
+    this.lampList = [];     // the street lamps of the map: [{x, y, z, color}]
+    this._lampTimer = 0;
+    this._lampTmp = [];
 
     this._buildLights();
-    this._buildEnvironment();
     this.scene.fog = new THREE.FogExp2(0xa39d97, 0.0072);
 
     this._buildComposer();
@@ -271,68 +326,216 @@ export class GameRenderer {
    * sun and the reflected sky turn against the view, and the sun fades when the player is in shade.
    */
   _updateViewLight() {
+    const v = (this.atm || ATMOSPHERES.block).view;
     const q = this._viewQ.copy(this.camera.quaternion).invert();
     this.viewSun.position.copy(this.sunDir).applyQuaternion(q).multiplyScalar(10);
-    this.viewSun.intensity = 3.0 * (0.1 + 0.9 * this.weaponSun);
+    this.viewSun.intensity = v.sun * (0.1 + 0.9 * this.weaponSun);
     // under a roof the sky light is mostly gone as well
     const sky = 0.5 + 0.5 * this.weaponSky;
-    this.viewHemi.intensity = 0.9 * sky;
-    this.viewFill.intensity = 0.8 * sky;
+    this.viewHemi.intensity = v.sky * sky;
+    this.viewFill.intensity = v.fill * sky;
     this.viewHemi.position.set(0, 1, 0).applyQuaternion(q);
     // the sky seen from the space of the camera is the sky turned by the inverse of the view
     // (three r186 looks the reflection up with the inverse of this rotation; checked with a mirror ball)
     this.viewScene.environmentRotation.setFromQuaternion(q);
-    this.viewScene.environmentIntensity = 0.36 + 0.24 * this.weaponSky + 0.25 * this.weaponSun;
+    // the reflected sky follows the strength of the map's sky light (1 for the block)
+    const envK = this.atm ? this.atm.env.intensity / ATMOSPHERES.block.env.intensity : 1;
+    this.viewScene.environmentIntensity = (0.36 + 0.24 * this.weaponSky + 0.25 * this.weaponSun) * envK;
   }
 
-  _buildEnvironment() {
+  /**
+   * Bake the sky of a preset into the background cube and the image based light. The sky scene,
+   * the cube target, the PMREM generator and its target are made once and reused, so changing the
+   * preset any number of times allocates nothing new on the GPU.
+   */
+  _buildEnvironment(atm) {
     const r = this.renderer;
-    const skyScene = new THREE.Scene();
-    const sky = new Sky();
-    sky.scale.setScalar(10000);
-    // Clamp the HDR output so the sun disc cannot flood the frame with bloom.
-    sky.material.fragmentShader = sky.material.fragmentShader.replace(
-      'gl_FragColor = vec4( texColor, 1.0 );',
-      'gl_FragColor = vec4( min( texColor, vec3( 6.0 ) ), 1.0 );',
-    );
-    const u = sky.material.uniforms;
-    // A compact sun: the glow reaches the clamp only within about 10 degrees. The hazier setting
-    // used before saturated a 50 degree band of sky, which washed out the horizon.
-    u.turbidity.value = 3.5;
-    u.rayleigh.value = 1.6;
-    u.mieCoefficient.value = 0.003;
-    u.mieDirectionalG.value = 0.95;
-    u.cloudCoverage.value = 0.55;
-    u.cloudDensity.value = 0.5;
+    if (!this._skyScene) {
+      const skyScene = new THREE.Scene();
+      const sky = new Sky();
+      sky.scale.setScalar(10000);
+      // Clamp the HDR output at 6 so the sun disc cannot flood the frame with bloom. Away from the
+      // sun (beyond about two degrees) the sky may be held lower (skyClamp): below the bloom
+      // threshold the glow around a low sun stops blooming over the buildings in front of it, and
+      // only the sun itself glows and casts light shafts. skyGain dims the sky of an overcast
+      // preset, which the scattering model alone draws far too bright.
+      sky.material.uniforms.skyGain = { value: 1 };
+      sky.material.uniforms.skyClamp = { value: 6 };
+      sky.material.fragmentShader = 'uniform float skyGain, skyClamp;\n' + sky.material.fragmentShader.replace(
+        'gl_FragColor = vec4( texColor, 1.0 );',
+        `float sunCore = smoothstep( 0.99905, 0.99985, dot( direction, vSunDirection ) );
+         gl_FragColor = vec4( min( texColor * skyGain, vec3( mix( skyClamp, 6.0, sunCore ) ) ), 1.0 );`,
+      );
+      skyScene.add(sky);
+      const night = new THREE.Mesh(
+        new THREE.SphereGeometry(5000, 48, 24),
+        new THREE.ShaderMaterial({ ...NIGHT_SKY_SHADER, uniforms: THREE.UniformsUtils.clone(NIGHT_SKY_SHADER.uniforms), side: THREE.BackSide, depthWrite: false }),
+      );
+      skyScene.add(night);
+      // Ground bounce so downward facing surfaces are not black.
+      const bounce = new THREE.Mesh(
+        new THREE.CircleGeometry(4000, 48),
+        new THREE.MeshBasicMaterial({ color: 0x7a6650, toneMapped: false }),
+      );
+      bounce.rotation.x = -Math.PI / 2;
+      bounce.position.y = -2.5;
+      skyScene.add(bounce);
+      this._skyScene = skyScene;
+      this._sky = sky;
+      this._nightSky = night;
+      this._bounce = bounce;
+      this._cubeRT = new THREE.WebGLCubeRenderTarget(1024, {
+        type: THREE.HalfFloatType,
+        generateMipmaps: true,
+        minFilter: THREE.LinearMipmapLinearFilter,
+      });
+      this._cubeCam = new THREE.CubeCamera(1, 100000, this._cubeRT);
+      this._pmrem = new THREE.PMREMGenerator(r);
+      this._envRT = null;
+    }
+    const u = this._sky.material.uniforms;
+    // A compact sun on the block: the glow reaches the clamp only within about 10 degrees. A hazier
+    // setting saturated a 50 degree band of sky, which washed out the horizon.
+    u.turbidity.value = atm.sky.turbidity;
+    u.rayleigh.value = atm.sky.rayleigh;
+    u.mieCoefficient.value = atm.sky.mie;
+    u.mieDirectionalG.value = atm.sky.mieG;
+    u.cloudCoverage.value = atm.sky.clouds;
+    u.cloudDensity.value = atm.sky.cloudDensity;
+    u.skyGain.value = atm.sky.gain ?? 1;
+    u.skyClamp.value = atm.sky.clamp ?? 6;
     u.sunPosition.value.copy(this.sunDir);
-    skyScene.add(sky);
+    this._sky.visible = !atm.night;
+    this._nightSky.visible = !!atm.night;
+    this._nightSky.material.uniforms.moonDir.value.copy(this.sunDir);
+    this._bounce.material.color.setHex(atm.bounce);
 
-    // Warm ground bounce so downward facing surfaces are not black.
-    const bounce = new THREE.Mesh(
-      new THREE.CircleGeometry(4000, 48),
-      new THREE.MeshBasicMaterial({ color: 0x7a6650, toneMapped: false }),
-    );
-    bounce.rotation.x = -Math.PI / 2;
-    bounce.position.y = -2.5;
-    skyScene.add(bounce);
+    this._cubeCam.update(r, this._skyScene);
+    this._envRT = this._pmrem.fromCubemap(this._cubeRT.texture, this._envRT);
+    this.scene.background = this._cubeRT.texture;
+    this.scene.environment = this._envRT.texture;
+    this.viewScene.environment = this._envRT.texture;
+    this.envTexture = this._envRT.texture;
+    this.skyTexture = this._cubeRT.texture;
+  }
 
-    const cubeRT = new THREE.WebGLCubeRenderTarget(1024, {
-      type: THREE.HalfFloatType,
-      generateMipmaps: true,
-      minFilter: THREE.LinearMipmapLinearFilter,
-    });
-    const cubeCam = new THREE.CubeCamera(1, 100000, cubeRT);
-    cubeCam.update(r, skyScene);
-    const pmrem = new THREE.PMREMGenerator(r);
-    const env = pmrem.fromCubemap(cubeRT.texture);
-    this.scene.background = cubeRT.texture;
-    this.scene.environment = env.texture;
-    this.scene.environmentIntensity = 1.25;
-    this.viewScene.environment = env.texture;
-    this.viewScene.environmentIntensity = 0.85;
-    pmrem.dispose();
-    this.envTexture = env.texture;
-    this.skyTexture = cubeRT.texture;
+  // ---------------------------------------------------------- atmosphere
+  /**
+   * Light the scene with the atmosphere preset of a map (core/atmosphere.js): sun direction,
+   * colour and strength of the cascades, sky and image based light, sky fill, fog, exposure,
+   * film grade, the light on the weapon, weather and the number of street lamp lights.
+   * The same id again does nothing and returns false. Changing the number of lamp lights
+   * recompiles the lit shaders, so the caller should run renderer.compile afterwards.
+   */
+  applyAtmosphere(id) {
+    const atm = atmosphereFor(id);
+    if (this.atm === atm) return false;
+    this.atm = atm;
+    this.atmosphereId = ATMOSPHERES[id] ? id : 'block';
+    const d = sunDirection(atm);
+    this.sunDir.set(d.x, d.y, d.z).normalize();
+    this.csm.lightDirection.copy(this.sunDir).negate();
+    for (const l of this.csm.lights) {
+      l.color.setHex(atm.sun.color);
+      l.intensity = atm.sun.intensity;
+    }
+    this.hemi.color.setHex(atm.hemi.sky);
+    this.hemi.groundColor.setHex(atm.hemi.ground);
+    this.hemi.intensity = atm.hemi.intensity;
+    this.scene.fog.color.setHex(atm.fog.color);
+    this.scene.fog.density = atm.fog.density;
+    this.renderer.toneMappingExposure = atm.exposure;
+    const v = atm.view;
+    this.viewSun.color.setHex(v.sunColor);
+    this.viewHemi.color.setHex(v.skyColor);
+    this.viewHemi.groundColor.setHex(v.groundColor);
+    this.viewFill.color.setHex(v.fillColor);
+    this._buildEnvironment(atm);
+    this.scene.environmentIntensity = atm.env.intensity;
+    this._applyGrade();
+    this._setLampLightCount(atm.lampLights);
+    if (this.weather) this.weather.set(atm.weather.kind, atm.weather.intensity);
+    return true;
+  }
+
+  /** Grade, light shafts and bloom of the preset; again after the composer is rebuilt. */
+  _applyGrade() {
+    const atm = this.atm;
+    if (!atm || !this.grade) return;
+    const u = this.grade.uniforms;
+    u.saturation.value = atm.grade.saturation;
+    u.contrast.value = atm.grade.contrast;
+    u.vignette.value = atm.grade.vignette;
+    const t = atm.grade.tint || [1.015, 1.0, 0.975];
+    u.tint.value.set(t[0], t[1], t[2]);
+    if (this.rays) {
+      if (atm === ATMOSPHERES.block) this.rays.uniforms.color.value.set(1.0, 0.8, 0.56);
+      else hexRgb(atm.sun.color, this.rays.uniforms.color.value);
+    }
+    // At night nothing but lamps, neon, fire and muzzle flashes is bright: they may glow.
+    if (this.bloom) this.bloom.threshold = atm.night ? 1.2 : 3.0;
+  }
+
+  _setLampLightCount(n) {
+    while (this.lampLights.length > n) {
+      const l = this.lampLights.pop();
+      this.scene.remove(l);
+      l.dispose();
+    }
+    while (this.lampLights.length < n) {
+      const l = new THREE.PointLight(0xffc47a, 0, 24, 2);
+      l.castShadow = false;
+      l.userData.lamp = null;
+      this.scene.add(l);
+      this.lampLights.push(l);
+    }
+    this._lampTimer = 0;
+  }
+
+  /**
+   * The street lamps of the map, [{x, y, z, color}] (y is the height of the lamp head). The lamp
+   * lights of the preset move to the lamps nearest to the camera about four times a second.
+   */
+  setLampLights(list) {
+    this.lampList = (list || []).map((p) => ({ x: p.x, y: p.y ?? 5.4, z: p.z, color: p.color ?? 0xffc47a }));
+    for (const l of this.lampLights) { l.userData.lamp = null; l.intensity = 0; }
+    this._lampTimer = 0;
+  }
+
+  _updateLampLights(dt) {
+    const lights = this.lampLights;
+    if (!lights.length) return;
+    this._lampTimer -= dt;
+    if (this._lampTimer > 0) return;
+    this._lampTimer = 0.25;
+    const c = this.camera.position;
+    const near = this._lampTmp;
+    near.length = 0;
+    for (const p of this.lampList) {
+      const d = (p.x - c.x) ** 2 + (p.z - c.z) ** 2;
+      if (near.length < lights.length) near.push({ p, d });
+      else {
+        let worst = 0;
+        for (let i = 1; i < near.length; i++) if (near[i].d > near[worst].d) worst = i;
+        if (d < near[worst].d) near[worst] = { p, d };
+      }
+    }
+    // a light already standing at one of the nearest lamps stays there, so lamps do not flicker
+    const todo = near.map((n) => n.p);
+    const free = [];
+    for (const l of lights) {
+      const i = l.userData.lamp ? todo.indexOf(l.userData.lamp) : -1;
+      if (i >= 0) todo.splice(i, 1);
+      else free.push(l);
+    }
+    for (const l of free) {
+      const p = todo.shift();
+      l.userData.lamp = p || null;
+      if (!p) { l.intensity = 0; continue; }
+      l.position.set(p.x, p.y - 0.25, p.z);
+      l.color.setHex(p.color);
+      l.intensity = LAMP_INTENSITY;
+    }
   }
 
   // ----------------------------------------------------------- composer
@@ -429,6 +632,7 @@ export class GameRenderer {
     // keep a handle to the live uniforms (ShaderPass clones them)
     this.grade = grade;
     composer.addPass(grade);
+    this._applyGrade();   // a new composer starts from the shader defaults: bring the map's grade back
   }
 
   // --------------------------------------------------------------- API
@@ -588,12 +792,88 @@ varying float vMacroUp;`)
    */
   swapForAO(full, shape) { shape.visible = false; this.aoSwaps.push({ full, shape }); }
 
+  /** Forget the swap registered for `full` (its map is being thrown away). */
+  removeAOSwap(full) { this.aoSwaps = this.aoSwaps.filter((s) => s.full !== full); }
+
   get uniforms() { return this.grade.uniforms; }
+
+  /**
+   * A picture of the arena from straight above for the map screens: orthographic, ±half metres
+   * around the origin, north (−z) up, east (+x) right. The map's sun, shadows and sky light, but no
+   * fog, sky, post effects, weapon, particles or weather. Returns a 2D canvas size × size, or null
+   * when it fails. The cascades are borrowed for the shot and given back to the player's camera.
+   */
+  renderTopDown(half, size = 1024) {
+    const r = this.renderer, scene = this.scene, csm = this.csm;
+    if (!this.atm) this.applyAtmosphere('block');
+    const fog = scene.fog, density = fog ? fog.density : 0;
+    const background = scene.background;
+    const exposure = r.toneMappingExposure;
+    const target = r.getRenderTarget();
+    const hidden = [];
+    let rtScene = null, rtOut = null, out = null;
+    try {
+      const cam = new THREE.OrthographicCamera(-half, half, half, -half, 1, 100);
+      cam.position.set(0, 80, 0);
+      cam.up.set(0, 0, -1);
+      cam.lookAt(0, 0, 0);
+      cam.updateMatrixWorld(true);
+      // Particles, glows and weather would smear the map; fog density 0 keeps the shaders as they
+      // are (no fog at all would recompile every material for one picture).
+      if (fog) fog.density = 0;
+      scene.background = null;
+      const weather = this.weather && this.weather.object;
+      scene.traverse((o) => {
+        if (!o.visible) return;
+        const m = o.material;
+        const glow = m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending;
+        if (o === weather || o.isPoints || o.isLine || o.isSprite || glow) { o.visible = false; hidden.push(o); }
+      });
+      // a night map is lit by lamps and the moon: brighter, so the streets still read on the map
+      if (this.atm.night) r.toneMappingExposure = exposure * 2.6;
+      csm.camera = cam;
+      csm.updateFrustums();
+      csm.update();
+      r.shadowMap.needsUpdate = true;
+      rtScene = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, samples: 4 });
+      rtOut = new THREE.WebGLRenderTarget(size, size, { type: THREE.UnsignedByteType });
+      r.setRenderTarget(rtScene);
+      r.clear();
+      r.render(scene, cam);
+      if (!this._topOutput) this._topOutput = new OutputPass();
+      this._topOutput.render(r, rtOut, rtScene);
+      const px = new Uint8Array(size * size * 4);
+      r.readRenderTargetPixels(rtOut, 0, 0, size, size, px);
+      out = document.createElement('canvas');
+      out.width = out.height = size;
+      const ctx = out.getContext('2d');
+      const img = ctx.createImageData(size, size);
+      const row = size * 4;
+      for (let y = 0; y < size; y++) img.data.set(px.subarray((size - 1 - y) * row, (size - y) * row), y * row);
+      ctx.putImageData(img, 0, 0);
+    } catch (e) {
+      console.warn('[map] the picture from above failed:', e && e.message ? e.message : e);
+      out = null;
+    } finally {
+      for (const o of hidden) o.visible = true;
+      if (fog) fog.density = density;
+      scene.background = background;
+      r.toneMappingExposure = exposure;
+      csm.camera = this.camera;
+      csm.updateFrustums();
+      r.shadowMap.needsUpdate = true;
+      r.setRenderTarget(target);
+      if (rtScene) rtScene.dispose();
+      if (rtOut) rtOut.dispose();
+    }
+    return out;
+  }
 
   /** Where the sun is on screen and how strong the light shafts are for this view. */
   _updateRays() {
     const rays = this.rays;
     if (!rays) return;
+    if (this.atm && this.atm.night) { rays.enabled = false; return; }
     const cam = this.camera;
     const facing = cam.getWorldDirection(this._fwd).dot(this.sunDir);
     let k = 0;
@@ -610,10 +890,13 @@ varying float vMacroUp;`)
   }
 
   render(dt) {
+    if (!this.atm) this.applyAtmosphere('block');
     this.grade.uniforms.time.value += dt;
     this.camera.updateMatrixWorld();
     this._updateRays();
     this._updateViewLight();
+    this._updateLampLights(dt);
+    if (this.weather) this.weather.update(dt, this.camera);
     this.csm.update();
     this.renderer.shadowMap.needsUpdate = true;
     this.composer.render(dt);
