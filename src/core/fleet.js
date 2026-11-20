@@ -12,6 +12,10 @@
 // Sizes are metres: length along the vehicle, width of the body without mirrors, height to the roof (to
 // the top of the roll bar on an open car), wheelbase from the front axle to the rear one (to the middle
 // of the rear pair on the three-axle tractor), wheelR the outer radius of a tyre.
+// The four saloons and crossovers also carry their side view: clearance (ground to the sill) and belt (the
+// foot of the side windows at the middle doors); world/fleet.js lofts their bodies from these numbers.
+// A model on wheels of two sizes carries rearWheelR, tyreW [front, rear] and wheelSpan (outside of the
+// rear tyres when they stand out of the body); a place must take the wider of width and wheelSpan.
 //
 // The prototypes, as published (read 2026-11-20). Every model stays within 10 % of these numbers
 // (tests/core/fleet.test.mjs holds the same table and checks it):
@@ -34,6 +38,11 @@
 //   Cyber3 (TSK club)   a rebodied Model 3: the donor's 4720 x 1850 x 1441, wheelbase 2875 mm.
 //   CyberRoadster       a Model 3 cut down (David Andreyev, "Cyber Hooligan"): wheelbase 2875 mm, the body 9 in
 //                       wider (2080 mm) and the roofline 11 in lower (1160 mm) than the donor (press reports).
+//                       The user's pictures: drag-radial rear tyres about an eighth taller and half as wide
+//                       again as the front ones, standing out of the body behind the cockpit (estimated).
+// Ground clearance (read 2026-11-20): Model 3 5.5 in (140 mm), Model S 4.6-5.3 in, Model Y 6.6 in (tesla.com),
+// Model X 6.6 in at medium ride height, more raised (getjerry.com, basenor.com). The beltlines are measured
+// off side photos against the published heights: the crossovers' sit about 0.1 m above the saloons'.
 
 /** The classes of places: a car of a street, a small sports car, a van or pickup, a bus, a tractor. */
 export const SLOTS = ['car', 'sport', 'van', 'bus', 'truck'];
@@ -57,13 +66,13 @@ export const FLEET = [
     look: { body: 'roadster17', rim: 'turbine', paints: ['red', 'black', 'white', 'silver'] } },
   { id: 'roadster26', slot: 'sport', length: 4.25, width: 2.0, height: 1.16, wheelbase: 2.8, wheelR: 0.35,
     look: { body: 'roadster26', rim: 'blade', paints: ['white', 'red', 'black'], lightBar: true, spoiler: true, nozzles: 4 } },
-  { id: 'model3', slot: 'car', length: 4.72, width: 1.85, height: 1.44, wheelbase: 2.875, wheelR: 0.335,
+  { id: 'model3', slot: 'car', length: 4.72, width: 1.85, height: 1.44, wheelbase: 2.875, wheelR: 0.335, clearance: 0.14, belt: 0.97,
     look: { body: 'model3', rim: 'aero', paints: ['white', 'black', 'grey', 'blue', 'red', 'silver'] } },
-  { id: 'modelS', slot: 'car', length: 5.02, width: 1.96, height: 1.43, wheelbase: 2.96, wheelR: 0.35,
+  { id: 'modelS', slot: 'car', length: 5.02, width: 1.96, height: 1.43, wheelbase: 2.96, wheelR: 0.35, clearance: 0.13, belt: 0.95,
     look: { body: 'modelS', rim: 'spoke10', paints: ['black', 'white', 'blue', 'silver', 'red'] } },
-  { id: 'modelX', slot: 'car', length: 5.06, width: 2.0, height: 1.68, wheelbase: 2.965, wheelR: 0.372,
+  { id: 'modelX', slot: 'car', length: 5.06, width: 2.0, height: 1.68, wheelbase: 2.965, wheelR: 0.372, clearance: 0.19, belt: 1.11,
     look: { body: 'modelX', rim: 'turbine', paints: ['silver', 'white', 'black', 'blue'] } },
-  { id: 'modelY', slot: 'car', length: 4.79, width: 1.92, height: 1.62, wheelbase: 2.89, wheelR: 0.36,
+  { id: 'modelY', slot: 'car', length: 4.79, width: 1.92, height: 1.62, wheelbase: 2.89, wheelR: 0.36, clearance: 0.167, belt: 1.07,
     look: { body: 'modelY', rim: 'aero', paints: ['white', 'grey', 'black', 'blue', 'red', 'silver'], lightBar: true } },
   { id: 'badger', slot: 'van', length: 4.9, width: 1.95, height: 2.1, wheelbase: 2.875, wheelR: 0.335,
     look: { body: 'badger', rim: 'spoke6', paints: ['matte', 'white', 'grey'] } },
@@ -71,7 +80,8 @@ export const FLEET = [
     look: { body: 'cyberbus', rim: 'hex', paints: ['matte', 'steel', 'white'], lightBar: true } },
   { id: 'cyber3', slot: 'car', length: 4.75, width: 1.92, height: 1.4, wheelbase: 2.875, wheelR: 0.34,
     look: { body: 'cyber3', rim: 'hex', paints: ['steel', 'black', 'matte'], lightBar: true } },
-  { id: 'cyberroadster', slot: 'sport', length: 4.75, width: 2.08, height: 1.16, wheelbase: 2.875, wheelR: 0.355,
+  { id: 'cyberroadster', slot: 'sport', length: 4.75, width: 2.08, height: 1.16, wheelbase: 2.875, wheelR: 0.34,
+    rearWheelR: 0.385, tyreW: [0.245, 0.36], wheelSpan: 2.32,
     look: { body: 'cyberroadster', rim: 'blade', paints: ['teal'], open: true, cage: true, spoiler: true, lightBar: true } },
   { id: 'cybertruck', slot: 'van', length: 5.68, width: 2.03, height: 1.79, wheelbase: 3.635, wheelR: 0.44,
     look: { body: 'cybertruck', rim: 'hex', paints: ['steel', 'black', 'matte'], lightBar: true } },
@@ -101,9 +111,9 @@ export const PLACES = {
   truck: [{ name: 'yard', w: 7.4, d: 3.2 }],
 };
 
-/** True when the model stands in a place w x d, either way round. */
+/** True when the model stands in a place w x d, either way round (tyres that stand out of the body count). */
 export function fitsPlace(v, w, d) {
-  return v.length <= Math.max(w, d) + 1e-9 && v.width <= Math.min(w, d) + 1e-9;
+  return v.length <= Math.max(w, d) + 1e-9 && Math.max(v.width, v.wheelSpan ?? 0) <= Math.min(w, d) + 1e-9;
 }
 
 /** A well mixed unsigned integer from any number. */

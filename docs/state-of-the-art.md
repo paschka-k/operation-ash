@@ -1,6 +1,6 @@
 # State of the art for OPERATION ASH (2024-2026)
 
-Prepared 2026-11-20 for the game owner. This is a menu to choose from, not a plan: wave 15 builds only the items marked **wave 15 - in progress**. Nothing here changes the code.
+Prepared 2026-11-20 for the game owner, statuses updated after wave 15 (release 1.5.0). This is a menu to choose from, not a plan: wave 15 built only the items marked **wave 15 - done**; everything else is still open. Nothing here changes the code.
 
 **How to read a row**
 
@@ -22,24 +22,27 @@ Prepared 2026-11-20 for the game owner. This is a menu to choose from, not a pla
 | 4 | E03 Death animations and ragdolls | Bots that fold and fall are the cheapest visible jump in "this feels current". |
 | 5 | P02 Weapon attachments and a gunsmith | The shop upgrades numbers; attachments give choices (the Delta Force and Tarkov draw). |
 | 6 | P01 Mantle, vault and tactical slide | Omnimovement-style traversal is now baseline in Call of Duty; ledges on 90 m maps suit it. |
-| 7 | G05 Dynamic resolution plus temporal anti-aliasing | Keeps frame rate on integrated GPUs, where this game actually runs for its owner. |
+| 7 | G05 Dynamic resolution plus temporal anti-aliasing | Keeps frame rate on integrated GPUs, where a plain browser tab still runs this game for its owner (the launcher reaches the fast card). |
 | 8 | G03 Screen-space reflections | Wet asphalt, glass and paint are where the PBR look still reads flat. |
 | 9 | R01 Challenges, daily orders and unlocks | A reason to come back; Helldivers 2 and Call of Duty both run on it; works offline with local storage. |
 | 10 | F01 Installable PWA with offline play | One file already plays offline; a manifest and service worker add an app icon and auto-updates. |
 
 ---
 
-## Wave 15 - in progress
+## Wave 15 - done
 
-The items the owner asked for, plus the release log. They also appear in their groups below.
+Wave 15 shipped as release 1.5.0. The items the owner asked for, plus what came with them (the release log, the vehicles, the weather of the new maps). They also appear in their groups below.
 
 | Item | Row | Status |
 |------|-----|--------|
-| Quality of the map (player shadow, sandbags that look like sandbags, no milky haze against the sun, buildings with depth) | G08 | wave 15 - in progress |
-| The map changes every wave, up to 10 maps | M01 | wave 15 - in progress |
-| Choose the next map after wave 5 | M02 | wave 15 - in progress |
-| Choose the video card in game (through the launcher; a plain browser tab picks by itself) | F05 | wave 15 - in progress |
-| Change log and release notes for every release | T01 | wave 15 - in progress |
+| Quality of the map, first reading: a real top-down view of the map being fought on, on the big map and the radar, with its name, north and scale | U06 | wave 15 - done |
+| Quality of the map, second reading: player shadow, sandbags that look like sandbags, no milky haze against the sun, buildings with depth | G08 | wave 15 - done |
+| The map changes every wave: the block plus nine new maps, one per wave | M01 | wave 15 - done |
+| Choose the next map after wave 5 (and in endless mode) | M02 | wave 15 - done |
+| Choose the video card in game | F05 | wave 15 - done, partly: only when the game is started with the launcher (`npm run play` or `play-windows.cmd`); a plain browser tab (the site, `dist/game.html`) cannot choose, so it shows the card and names the launcher |
+| Each new map with its own sky, light and weather (rain, snow, dust, a night with street lamps) | M09 | wave 15 - done |
+| Cars, the bus and the riders' vehicles built as detailed models (a Tesla-style set) | G17 | wave 15 - done |
+| Change log and release notes for every release, the version and "What's new" in the main menu | T01 | wave 15 - done |
 
 ---
 
@@ -54,7 +57,7 @@ The items the owner asked for, plus the release log. They also appear in their g
 | G05 | Dynamic resolution plus temporal anti-aliasing and upscaling | Steadier image and frame rate on weak GPUs | partial (SMAA, presets with auto-downgrade, render scale) | WebGL now (DLSS and FSR 4 cannot run in a page; a TAA plus spatial upscaler can) | M |
 | G06 | Volumetric fog and light shafts | Dust and smoke that glow in the sun | partial (fake shafts, distance fog) | WebGL now; a froxel volume is cheaper with WebGPU compute | M |
 | G07 | Contact shadows | Small objects sit on the ground | partial (GTAO yes, contact shadows no) | WebGL now | S |
-| G08 | **Map quality: player shadow, sandbags, no haze against the sun, deep facades** - wave 15 - in progress | The block looks less like boxes | partial | WebGL now | M |
+| G08 | **Map quality: player shadow, sandbags, no haze against the sun, deep facades** - wave 15 - done | The block looks less like boxes | have | WebGL now | M |
 | G09 | Decals: bullet holes, scorch, blood, tyre marks | Fights leave marks on the world | partial | WebGL now | M |
 | G10 | Destructible geometry (walls break into chunks) | Cover and buildings change during a fight | no (crates and barrels only) | WebGL now for scripted breaks; real-time fracture needs WebGPU compute | XL |
 | G11 | GPU particles (smoke, fire, sparks) | Thousands of particles instead of dozens | partial (CPU effects) | needs WebGPU for compute particles; instancing works now | M |
@@ -63,6 +66,7 @@ The items the owner asked for, plus the release log. They also appear in their g
 | G14 | Gaussian splat backdrops | Photoreal distant scenery or scanned rooms | no | WebGL now (Spark 2.0 runs on WebGL2); capture files need downloads or an account | L |
 | G15 | Wet surfaces, puddles and rain response | Rain changes how the street looks | partial (rain streaks) | WebGL now | M |
 | G16 | HDR output | Brighter highlights on HDR screens | no (filmic tone mapping only) | needs WebGPU (canvas HDR is still limited) | M |
+| G17 | **Detailed vehicles built by code: a Tesla-style set (Semi, three Roadsters, Model 3, S, X, Y, BADGER, CyberBus, Cyber3, CyberRoadster, Cybertruck), more detailed rider vehicles** - wave 15 - done | Parked cars and the bus look like vehicles, not boxes | have (no badges or plates; recognisable by shape) | WebGL now | M |
 
 ## 2. Gunplay & movement
 
@@ -103,15 +107,15 @@ The items the owner asked for, plus the release log. They also appear in their g
 
 | ID | Feature | Player gets | In game | Feasible | Size |
 |----|---------|-------------|---------|----------|------|
-| M01 | **A different map every wave, up to 10 maps** - wave 15 - in progress | The fight does not repeat | no | WebGL now (maps built by code) | L |
-| M02 | **Choose the next map after wave 5** - wave 15 - in progress | You pick where to fight | no | WebGL now | M |
+| M01 | **A different map every wave, up to 10 maps** - wave 15 - done | The fight does not repeat | have (the block plus nine new maps) | WebGL now (maps built by code) | L |
+| M02 | **Choose the next map after wave 5** - wave 15 - done | You pick where to fight | have | WebGL now | M |
 | M03 | Endless mode | Play beyond the last wave | have | WebGL now | S |
 | M04 | Extraction mode: carry loot out or lose it | High-stakes runs (Tarkov, Delta Force Operations, Arc Raiders) | no | WebGL now for solo; a safe persistent stash needs a server | XL |
 | M05 | Co-op against waves | Friends in the same wave | no | needs a server | XL |
 | M06 | Domination, hardpoint, search and destroy against bots | Objective play | no | WebGL now | L |
 | M07 | Round mode with perks and wall-buy shops (Zombies style) | A different loop on the same maps | partial (waves and shop) | WebGL now | L |
 | M08 | Shrinking-zone mode against bots | A different pacing | no | WebGL now (needs a bigger map; see Limits) | XL |
-| M09 | Weather and time of day per map | Night, fog, snow change tactics | partial (low sun, rain) | WebGL now | M |
+| M09 | Weather and time of day per map - wave 15 - done | Night, fog, snow change tactics | have (each map its sun, sky, fog and weather: rain, snow, dust, night; fixed per map, no cycle) | WebGL now | M |
 | M10 | Map editor for the owner | Build maps without code | no | WebGL now | XL |
 | M11 | Daily seed run (same map and waves for everyone) | Compare scores | no | WebGL now; a shared board needs a server | M |
 | M12 | Campaign missions with scripted beats | A story | no | WebGL now | XL |
@@ -154,7 +158,7 @@ The items the owner asked for, plus the release log. They also appear in their g
 | U03 | Subtitles and captions for sound cues | Deaf and hard-of-hearing players | partial | WebGL now | S |
 | U04 | Field of view, head bob and sensitivity sliders | Comfort | partial (fov, sensitivity, invert) | WebGL now | S |
 | U05 | Russian and English UI | Own language | have | WebGL now | S |
-| U06 | Radar and big map | Orientation | have | WebGL now | S |
+| U06 | **Radar and big map with a real top-down view of the current map** - wave 15 - done | Orientation | have (map name, north, 10 m scale, legend) | WebGL now | S |
 | U07 | Photo mode | Share screenshots | partial (dev `?shots` only) | WebGL now | S |
 | U08 | Touch controls | Play on a phone or tablet | no | WebGL now | L |
 | U09 | Kill cam and replay of the last seconds | Learn from deaths | no | WebGL now | L |
@@ -185,7 +189,7 @@ The items the owner asked for, plus the release log. They also appear in their g
 | F02 | WebGPU renderer (three.js WebGPURenderer and TSL) | Compute effects, lower CPU cost | no | needs WebGPU (Chrome, Edge, Firefox 141+ on Windows, Safari 26) | XL |
 | F03 | Web Workers and OffscreenCanvas | Physics and AI off the main thread, smoother frames | no | WebGL now | L |
 | F04 | Automatic quality presets | Playable on weak GPUs | have | WebGL now | S |
-| F05 | **Video-card choice in game** - wave 15 - in progress | Pick the fast GPU on a laptop | partial (shows the card, no choice) | WebGL now through the launcher; a plain tab cannot choose | M |
+| F05 | **Video-card choice in game** - wave 15 - done, partly | Pick the fast GPU on a laptop | partial (a choice in the settings when started with the launcher, `npm run play` or `play-windows.cmd`; a plain tab shows the card and names the launcher) | WebGL now through the launcher; a plain tab cannot choose | M |
 | F06 | GPU-driven rendering (indirect draw, GPU culling) | Many more objects per frame | no | needs WebGPU | XL |
 | F07 | Texture compression (KTX2, WebP) and streaming | Faster start, less memory | no (listed as not started) | WebGL now | M |
 | F08 | Pointer-lock, fullscreen and wake-lock polish | Fewer interruptions | partial | WebGL now | S |
@@ -198,7 +202,7 @@ The items the owner asked for, plus the release log. They also appear in their g
 
 | ID | Feature | Player gets | In game | Feasible | Size |
 |----|---------|-------------|---------|----------|------|
-| T01 | **Change log and release notes for every release** - wave 15 - in progress | See what changed | no | WebGL now | S |
+| T01 | **Change log and release notes for every release** - wave 15 - done | See what changed | have (CHANGELOG.md, RELEASE_NOTES.md, the version and "What's new" in the main menu) | WebGL now | S |
 | T02 | Automated browser tests and screenshot diffs | Fewer regressions | partial (core tests only) | WebGL now | M |
 | T03 | Performance budget per map in CI | No slow maps | partial | WebGL now | M |
 | T04 | One-file build and web build | Double-click or website | have | WebGL now | S |
@@ -207,9 +211,9 @@ The items the owner asked for, plus the release log. They also appear in their g
 | T07 | Debug console and replay recorder | Faster bug reports | partial (`window.__game`) | WebGL now | M |
 | T08 | Opt-in telemetry | Know where players quit | no | needs a server | M |
 | T09 | Localization pipeline | More languages | partial (ru, en tables) | WebGL now | S |
-| T10 | Procedural map and prop generators | Endless variety | partial | WebGL now | L |
+| T10 | Procedural map and prop generators | Endless variety | partial (wave 15: nine maps from a seeded generator, the same each game) | WebGL now | L |
 
-Total: 116 rows across ten groups; no group has fewer than nine.
+Total: 117 rows across ten groups; no group has fewer than nine.
 
 ---
 

@@ -244,9 +244,6 @@ const STR = {
     gpuSoftTitle: 'Браузер рисует без видеокарты',
     gpuNow: 'Сейчас:',
     gpuSoftText: 'Включите аппаратное ускорение в настройках браузера (Chrome и Edge: «Настройки → Система → Использовать графическое ускорение»).',
-    gpuHintWindows: 'Windows: «Параметры → Система → Дисплей → Графика», выберите в списке свой браузер и задайте ему «Высокая производительность».',
-    gpuHintNvidia: 'Или в панели управления NVIDIA: «Управление параметрами 3D → Программные настройки», выберите браузер и «Высокопроизводительный процессор NVIDIA».',
-    gpuHintRestart: 'Затем полностью закройте и снова откройте браузер.',
     gpuHintClose: 'Понятно',
     // ---- wave 15: gpu
     gpuPick: 'Играть на видеокарте',
@@ -258,6 +255,11 @@ const STR = {
     gpuFailed: 'Не удалось сменить видеокарту.',
     gpuOnlyOne: 'Игра запущена лаунчером, но в системе одна видеокарта: выбирать не из чего.',
     gpuTabNote: 'Браузер сам выбирает видеокарту, и страница на это повлиять не может. Выбрать её в игре можно, запустив игру лаунчером из папки игры: npm run play или play-windows.cmd. Второй путь: «Параметры → Система → Дисплей → Графика» в Windows.',
+    // ---- wave 15: F2 (the main menu's hint: the launcher first, the game's own setting under it)
+    gpuHintLauncher: 'Выбрать видеокарту можно в самой игре: запустите игру лаунчером из папки игры — npm run play или двойной щелчок по play-windows.cmd. Тогда в «Настройки → Видеокарта» появится список видеокарт, и окно перезапустится на выбранной.',
+    gpuHintOther: 'Второй путь, без лаунчера: в Windows «Параметры → Система → Дисплей → Графика» задайте браузеру «Высокая производительность» (или «Высокопроизводительный процессор NVIDIA» в панели управления NVIDIA), затем перезапустите браузер.',
+    gpuHintPick: 'Игра запущена лаунчером: выберите быструю видеокарту в «Настройки → Видеокарта», и окно игры перезапустится на ней.',
+    gpuHintOpen: 'Выбрать видеокарту',
 
     // ---- wave 15: maps-switch
     mapLoading: 'Загрузка карты: {name}',
@@ -484,9 +486,6 @@ const STR = {
     gpuSoftTitle: 'The browser draws without a graphics card',
     gpuNow: 'Now:',
     gpuSoftText: 'Turn on hardware acceleration in the browser settings (Chrome and Edge: "Settings → System → Use graphics acceleration").',
-    gpuHintWindows: 'Windows: "Settings → System → Display → Graphics", pick your browser in the list and set it to "High performance".',
-    gpuHintNvidia: 'Or in the NVIDIA Control Panel: "Manage 3D settings → Program Settings", pick the browser and "High-performance NVIDIA processor".',
-    gpuHintRestart: 'Then close the browser completely and open it again.',
     gpuHintClose: 'Got it',
     // ---- wave 15: gpu
     gpuPick: 'Play on graphics card',
@@ -498,6 +497,11 @@ const STR = {
     gpuFailed: 'Could not change the graphics card.',
     gpuOnlyOne: 'The game runs through the launcher, but the system has one graphics card: nothing to choose from.',
     gpuTabNote: 'The browser picks the graphics card itself and a page cannot change that. To choose it in the game, start the game with the launcher from the game folder: npm run play or play-windows.cmd. The other way: "Settings → System → Display → Graphics" in Windows.',
+    // ---- wave 15: F2 (the main menu's hint: the launcher first, the game's own setting under it)
+    gpuHintLauncher: 'You can choose the graphics card in the game itself: start the game with the launcher from the game folder — npm run play, or double-click play-windows.cmd. "Settings → Graphics card" then lists the cards and the window restarts on the one you pick.',
+    gpuHintOther: 'The other way, without the launcher: in Windows "Settings → System → Display → Graphics" set the browser to "High performance" (or "High-performance NVIDIA processor" in the NVIDIA Control Panel), then restart the browser.',
+    gpuHintPick: 'The game runs through the launcher: pick the fast card in "Settings → Graphics card" and the game window restarts on it.',
+    gpuHintOpen: 'Choose the card',
 
     // ---- wave 15: maps-switch
     mapLoading: 'Loading map: {name}',

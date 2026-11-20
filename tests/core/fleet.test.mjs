@@ -26,7 +26,14 @@ const PROTO = {
 };
 
 const within = (v, ref, k = 0.1) => Math.abs(v - ref) <= ref * k + 1e-9;
-const fits = (v, w, d) => v.length <= Math.max(w, d) + 1e-9 && v.width <= Math.min(w, d) + 1e-9;
+// the widest point of a model: its body, or the tyres where they stand out of it
+const fits = (v, w, d) => v.length <= Math.max(w, d) + 1e-9 && Math.max(v.width, v.wheelSpan ?? 0) <= Math.min(w, d) + 1e-9;
+
+// Ground clearance, metres (read 2026-11-20): Model 3 5.5 in (getjerry.com, Tesla), Model S about 4.6-5.3 in
+// (getjerry.com), Model Y 6.6 in (tesla.com Model Y spec page), Model X 6.6 in at medium ride height and more
+// when raised (getjerry.com, basenor.com). The beltline (the foot of the side windows) is not published: a
+// crossover's sits higher, a saloon's lower, and the side glass of all four is 0.35-0.65 m tall.
+const CLEARANCE = { model3: 0.14, modelS: 0.13, modelY: 0.167, modelX: 0.17 };
 
 test('fleet: the thirteen models, each with a slot and plain sizes', () => {
   assert.deepEqual(FLEET.map((v) => v.id).sort(), [...IDS].sort());
@@ -50,6 +57,47 @@ test('fleet: every model is within 10 % of its prototype in length, width, heigh
     assert.ok(within(v.height, H), `${v.id}: height ${v.height} vs ${H}`);
     assert.ok(within(v.wheelbase, B), `${v.id}: wheelbase ${v.wheelbase} vs ${B}`);
   }
+});
+
+test('fleet: Model X and Y are tall crossovers, Model 3 and S low saloons, the four told apart from the side', () => {
+  const [m3, mS, mX, mY] = ['model3', 'modelS', 'modelX', 'modelY'].map(vehicleOf);
+  for (const v of [m3, mS, mX, mY]) {
+    assert.ok(Number.isFinite(v.clearance) && Number.isFinite(v.belt), v.id + ': ground clearance and beltline in the catalogue');
+    assert.ok(within(v.clearance, CLEARANCE[v.id], 0.25), `${v.id}: clearance ${v.clearance} vs ${CLEARANCE[v.id]}`);
+    assert.ok(v.belt > v.wheelR * 2 && v.belt < v.height, v.id + ': the beltline between the wheel tops and the roof');
+    const glass = v.height - v.belt;
+    assert.ok(glass >= 0.35 && glass <= 0.65, `${v.id}: side glass ${glass.toFixed(2)} m tall`);
+  }
+  // the open data: Model 3 and S about 1.44 m, Model Y about 1.62 m, Model X about 1.68 m
+  for (const low of [m3, mS]) {
+    for (const tall of [mX, mY]) {
+      assert.ok(tall.height >= low.height + 0.15, `${tall.id} (${tall.height}) at least 0.15 m taller than ${low.id} (${low.height})`);
+      assert.ok(tall.belt >= low.belt + 0.08, `${tall.id}: the beltline ${tall.belt} well above ${low.id}'s ${low.belt}`);
+      assert.ok(tall.clearance > low.clearance, `${tall.id}: more ground clearance than ${low.id}`);
+    }
+  }
+  assert.ok(mX.height > mY.height, 'Model X is the tallest of the four');
+  assert.ok(mS.length >= m3.length + 0.2, 'Model S is a longer car than Model 3');
+  // no two of the four share a side view: length or height differ by 5 cm at least
+  const four = [m3, mS, mX, mY];
+  for (let i = 0; i < 4; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      const a = four[i], b = four[j];
+      assert.ok(Math.abs(a.length - b.length) >= 0.05 || Math.abs(a.height - b.height) >= 0.05, a.id + ' and ' + b.id + ' look the same from the side');
+    }
+  }
+});
+
+test('fleet: the CyberRoadster stands on huge rear tyres that stick out of its body', () => {
+  const v = vehicleOf('cyberroadster');
+  assert.ok(Number.isFinite(v.rearWheelR), 'a rear wheel of its own');
+  assert.ok(v.rearWheelR >= v.wheelR * 1.08, `rear tyre ${v.rearWheelR} m against the front ${v.wheelR} m: not much bigger`);
+  assert.ok(Array.isArray(v.tyreW) && v.tyreW.length === 2, 'tyre widths [front, rear]');
+  assert.ok(v.tyreW[1] >= v.tyreW[0] * 1.25, `rear tyre ${v.tyreW[1]} m wide against the front ${v.tyreW[0]} m`);
+  assert.ok(v.wheelSpan > v.width + 0.1, `the rear tyres (${v.wheelSpan} m outside) stand out of the body (${v.width} m)`);
+  assert.ok(v.rearWheelR * 2 < v.height, 'the rear tyres stay under the roll bar');
+  // the place keeps its collider: the model still fits the street place of a sports car
+  assert.ok(PLACES.sport.some((p) => fits(v, p.w, p.d)), 'the CyberRoadster with its tyres fits a street place');
 });
 
 test('fleet: every model fits at least one place of its class', () => {

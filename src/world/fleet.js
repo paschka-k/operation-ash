@@ -399,6 +399,7 @@ class Car {
     const set = new Set(xs.map((x) => +x.toFixed(4)));
     for (let x = x0 + step; x < x1 - step * 0.4; x += step) set.add(+x.toFixed(4));
     for (const a of this.axles) {
+      if (a.open) continue;
       const r = a.ra;
       for (const k of [-1.012, -1, -0.92, -0.7, -0.4, 0, 0.4, 0.7, 0.92, 1, 1.012]) set.add(+(a.x + k * r).toFixed(4));
       if (a.trapezoid) for (const k of [-0.55, 0.55]) set.add(+(a.x + k * r).toFixed(4));
@@ -413,7 +414,7 @@ class Car {
     this._cap(stations[stations.length - 1], grid[grid.length - 1], 1, def.capF ?? this.paint);
     this._cap(stations[0], grid[0], -1, def.capR ?? this.paint);
     // wheel wells: a dark wall inside each arch so nobody sees through the car
-    for (const a of this.axles) this._well(a);
+    for (const a of this.axles) if (!a.open) this._well(a);
     // the low hull for the shadow maps and the occlusion pass
     this._proxyHull();
   }
@@ -431,7 +432,7 @@ class Car {
     let y = -9;
     for (const a of this.axles) {
       const dx = Math.abs(x - a.x);
-      if (dx > a.ra + 1e-6) continue;
+      if (a.open || dx > a.ra + 1e-6) continue;
       let h;
       if (a.trapezoid) h = dx < a.ra * 0.55 ? a.y + a.ra * 0.93 : a.y + a.ra * 0.93 - (dx - a.ra * 0.55) / (a.ra * 0.45) * a.ra * 1.05;
       else h = a.y + Math.sqrt(Math.max(0, a.ra * a.ra - dx * dx)) * (a.rise ?? 1);
@@ -695,13 +696,14 @@ class Car {
   // ------------------------------------------------------------------ wheels
   /**
    * Axles before the hull: [{x, R, w (tyre width), rim, rimR, style, caliper, dual}], arch radius and shape.
-   * Must be called before hull() (the arches are cut where the axles are).
+   * open: the wheels stand outside the body (no arch cut, no well; give z). Must be called before hull()
+   * (the arches are cut where the axles are).
    */
   axle(x, o) {
     const R = o.R ?? this.v.wheelR;
     const flat = this.burnt;
     const y = flat ? R * 0.8 : R;
-    this.axles.push({ x, R, y: R, yDrawn: y, ra: o.ra ?? R + 0.055, trapezoid: o.arch === 'trapezoid', rise: o.rise, wellDepth: o.wellDepth, o });
+    this.axles.push({ x, R, y: R, yDrawn: y, ra: o.ra ?? R + 0.055, trapezoid: o.arch === 'trapezoid', rise: o.rise, wellDepth: o.wellDepth, open: !!o.open, o });
   }
 
   _wheels() {
@@ -1046,30 +1048,35 @@ function rimFace(m, style, rimR, face, P, o) {
  * special parts. Numbers are metres in the model's frame (nose at +x).
  */
 const BODIES = {
+  // The four saloons and crossovers are lofted from their catalogue numbers (core/fleet.js): H the roof,
+  // B the beltline (the foot of the side windows at the middle doors), G the ground clearance. Model 3 is a
+  // saloon with a short boot lid; Model S a longer liftback whose rear window runs almost to the tail;
+  // Model Y a crossover with a fastback hatch over a tall tail; Model X the tallest, its roof long and level
+  // behind a windscreen that reaches over the front seats, its tailgate nearly upright.
   model3(c) {
-    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR;
+    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR, H = c.v.height, B = c.v.belt, G = c.v.clearance;
     const xa = xF - 0.86, xb = xa - c.v.wheelbase;
     c.axle(xa, { w: 0.235, rimR: 0.229, style: 'aero', ra: R + 0.045 });
     c.axle(xb, { w: 0.235, rimR: 0.229, style: 'aero', ra: R + 0.045 });
     const cowl = xF - 1.62, roofF = xF - 2.62, roofR = xF - 3.35, deck = xF - 4.18;
     c.hull({
       keys: [
-        [xF, 0.34, 0.5, 0.52, hw * 0.7, hw * 0.55],
-        [xF - 0.05, 0.25, 0.6, 0.62, hw * 0.87, hw * 0.7],
+        [xF, 0.32, 0.5, 0.52, hw * 0.7, hw * 0.55],
+        [xF - 0.05, 0.24, 0.6, 0.62, hw * 0.87, hw * 0.7],
         [xF - 0.16, 0.2, 0.68, 0.69, hw * 0.955, hw * 0.79],
-        [xF - 0.45, 0.19, 0.76, 0.765, hw * 0.99, hw * 0.83],
-        [xF - 0.86, 0.185, 0.83, 0.82, hw, hw * 0.83],
-        [xF - 1.3, 0.18, 0.89, 0.875, hw, hw * 0.8],
-        [cowl, 0.18, 0.92, 0.93, hw, hw * 0.76],
-        [xF - 2.15, 0.178, 0.95, 1.22, hw, hw * 0.69],
-        [roofF, 0.178, 0.965, 1.415, hw, hw * 0.64],
-        [xF - 3.0, 0.18, 0.975, 1.44, hw, hw * 0.63],
-        [roofR, 0.185, 0.985, 1.4, hw, hw * 0.64],
-        [xF - 3.8, 0.2, 0.995, 1.2, hw * 0.995, hw * 0.7],
-        [deck, 0.23, 1.0, 1.035, hw * 0.98, hw * 0.76],
-        [xF - 4.5, 0.27, 0.985, 1.02, hw * 0.95, hw * 0.77],
-        [-xF + 0.07, 0.32, 0.93, 0.975, hw * 0.88, hw * 0.72],
-        [-xF, 0.38, 0.8, 0.85, hw * 0.79, hw * 0.62],
+        [xF - 0.45, G + 0.04, 0.76, 0.765, hw * 0.99, hw * 0.83],
+        [xF - 0.86, G + 0.03, 0.83, 0.82, hw, hw * 0.83],
+        [xF - 1.3, G + 0.025, 0.89, 0.875, hw, hw * 0.8],
+        [cowl, G + 0.02, B - 0.05, B - 0.04, hw, hw * 0.76],
+        [xF - 2.15, G + 0.02, B - 0.025, 1.22, hw, hw * 0.69],
+        [roofF, G + 0.02, B - 0.01, H - 0.025, hw, hw * 0.64],
+        [xF - 3.0, G + 0.02, B, H, hw, hw * 0.63],
+        [roofR, G + 0.025, B + 0.01, H - 0.04, hw, hw * 0.64],
+        [xF - 3.8, G + 0.04, B + 0.02, 1.2, hw * 0.995, hw * 0.7],
+        [deck, G + 0.07, B + 0.025, 1.035, hw * 0.98, hw * 0.76],
+        [xF - 4.5, 0.26, B + 0.01, 1.02, hw * 0.95, hw * 0.77],
+        [-xF + 0.07, 0.31, 0.93, 0.975, hw * 0.88, hw * 0.72],
+        [-xF, 0.37, 0.8, 0.85, hw * 0.79, hw * 0.62],
       ],
       shape: { glassMid: 0.5, bulge: 0.025, rail: 0.035, low: 0.5 },
       zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.12, sideR: xF - 3.9, pillars: [[xF - 2.95, 0.05]], roof: 'glass' },
@@ -1081,131 +1088,135 @@ const BODIES = {
     c.end(C.tail, -1, hw * 0.42, hw * 0.74, 0.83, 0.89);
     c.end(C.grille, 1, -hw * 0.42, hw * 0.42, 0.37, 0.43, { both: false });
     c.end(C.matte, -1, -hw * 0.62, hw * 0.62, 0.36, 0.46, { both: false });
-    c.seams([cowl - 0.05, xF - 2.95, xF - 3.95], 0.27, 0.95);
-    c.handles([xF - 2.35, xF - 3.45], 0.89, { len: 0.16 });
-    c.mirrors(cowl - 0.12, 0.98, { len: 0.19 });
+    c.seams([cowl - 0.05, xF - 2.95, xF - 3.95], G + 0.12, B - 0.02);
+    c.handles([xF - 2.35, xF - 3.45], B - 0.08, { len: 0.16 });
+    c.mirrors(cowl - 0.12, B + 0.01, { len: 0.19 });
   },
   modelS(c) {
-    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR;
+    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR, H = c.v.height, B = c.v.belt, G = c.v.clearance;
     const xa = xF - 0.95, xb = xa - c.v.wheelbase;
     const wo = { w: 0.245, rimR: 0.241, style: 'spoke10', rim: C.rimGrey, ra: R + 0.045 };
     c.axle(xa, wo); c.axle(xb, wo);
-    const cowl = xF - 1.82, roofF = xF - 2.85, roofR = xF - 3.55, deck = xF - 4.42;
+    // the liftback: a long hood, the rear window from the top of the roof nearly to the tail, a small lip
+    const cowl = xF - 1.85, roofF = xF - 2.8, roofR = xF - 3.42, deck = xF - 4.72;
     c.hull({
       keys: [
-        [xF, 0.33, 0.46, 0.5, hw * 0.68, hw * 0.55],
-        [xF - 0.05, 0.24, 0.57, 0.6, hw * 0.86, hw * 0.7],
-        [xF - 0.18, 0.2, 0.65, 0.665, hw * 0.95, hw * 0.79],
-        [xF - 0.55, 0.19, 0.74, 0.745, hw * 0.99, hw * 0.83],
-        [xF - 1.0, 0.185, 0.81, 0.8, hw, hw * 0.83],
-        [cowl, 0.18, 0.89, 0.9, hw, hw * 0.77],
-        [xF - 2.35, 0.178, 0.92, 1.2, hw, hw * 0.69],
-        [roofF, 0.178, 0.94, 1.405, hw, hw * 0.63],
-        [xF - 3.15, 0.18, 0.95, 1.43, hw, hw * 0.62],
-        [roofR, 0.185, 0.96, 1.36, hw, hw * 0.64],
-        [xF - 4.0, 0.2, 0.975, 1.17, hw * 0.995, hw * 0.71],
-        [deck, 0.24, 0.985, 1.03, hw * 0.97, hw * 0.77],
-        [xF - 4.75, 0.29, 0.97, 1.045, hw * 0.93, hw * 0.77],
-        [-xF + 0.06, 0.33, 0.91, 0.99, hw * 0.86, hw * 0.71],
+        [xF, 0.3, 0.45, 0.49, hw * 0.68, hw * 0.55],
+        [xF - 0.05, 0.22, 0.56, 0.59, hw * 0.86, hw * 0.7],
+        [xF - 0.18, 0.18, 0.64, 0.655, hw * 0.95, hw * 0.79],
+        [xF - 0.55, G + 0.035, 0.73, 0.735, hw * 0.99, hw * 0.83],
+        [xF - 1.0, G + 0.025, 0.8, 0.79, hw, hw * 0.83],
+        [cowl, G + 0.02, B - 0.06, B - 0.05, hw, hw * 0.77],
+        [xF - 2.35, G + 0.015, B - 0.03, 1.2, hw, hw * 0.69],
+        [roofF, G + 0.015, B - 0.01, H - 0.03, hw, hw * 0.63],
+        [xF - 3.12, G + 0.02, B, H, hw, hw * 0.62],
+        [roofR, G + 0.025, B + 0.01, H - 0.045, hw, hw * 0.635],
+        [xF - 4.1, G + 0.05, B + 0.025, 1.19, hw * 0.995, hw * 0.7],
+        [deck, G + 0.12, B + 0.03, 1.02, hw * 0.96, hw * 0.77],
+        [xF - 4.86, 0.29, B + 0.02, 1.04, hw * 0.92, hw * 0.76],
+        [-xF + 0.05, 0.33, 0.92, 0.99, hw * 0.86, hw * 0.71],
         [-xF, 0.38, 0.78, 0.84, hw * 0.78, hw * 0.62],
       ],
       shape: { glassMid: 0.5, bulge: 0.02, rail: 0.03, low: 0.5 },
-      zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.1, sideR: xF - 4.05, pillars: [[xF - 3.12, 0.05]], roof: 'glass' },
+      zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.1, sideR: xF - 4.15, pillars: [[xF - 3.12, 0.05]], roof: 'glass' },
     });
     c.side(C.lamp, xF - 0.46, xF - 0.04, (x) => 0.6 + (xF - x) * 0.12, (x) => 0.65 + (xF - x) * 0.12);
     c.side(C.head, xF - 0.42, xF - 0.1, (x) => 0.615 + (xF - x) * 0.12, (x) => 0.628 + (xF - x) * 0.12, { out: 0.007 });
     c.side(C.tail, -xF + 0.03, -xF + 0.45, 0.85, 0.93, { out: 0.006 });
     c.end(C.tail, -1, hw * 0.48, hw * 0.76, 0.84, 0.9);
-    c.end(C.grille, 1, -hw * 0.5, hw * 0.5, 0.36, 0.43, { both: false });
-    c.end(C.matte, -1, -hw * 0.64, hw * 0.64, 0.35, 0.45, { both: false });
-    c.top(C.trim, xF - 4.58, xF - 4.5, -hw * 0.72, hw * 0.72, { out: 0.012 });      // the lip of the tailgate
-    c.seams([cowl - 0.05, xF - 3.12, xF - 4.1], 0.27, 0.92);
-    c.handles([xF - 2.5, xF - 3.65], 0.86, { len: 0.2, paint: C.chrome });
-    c.mirrors(cowl - 0.1, 0.95, { len: 0.2 });
+    c.end(C.grille, 1, -hw * 0.5, hw * 0.5, 0.33, 0.4, { both: false });
+    c.end(C.matte, -1, -hw * 0.64, hw * 0.64, 0.4, 0.5, { both: false });
+    c.top(C.trim, deck - 0.1, deck - 0.02, -hw * 0.72, hw * 0.72, { out: 0.012 });      // the lip of the liftback
+    c.seams([cowl - 0.05, xF - 3.12, xF - 4.15], G + 0.12, B - 0.03);
+    c.handles([xF - 2.5, xF - 3.65], B - 0.09, { len: 0.2, paint: C.chrome });
+    c.mirrors(cowl - 0.1, B, { len: 0.2 });
   },
 
   modelX(c) {
-    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR;
+    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR, H = c.v.height, B = c.v.belt, G = c.v.clearance;
     const xa = xF - 0.98, xb = xa - c.v.wheelbase;
     const wo = { w: 0.265, rimR: 0.254, style: 'turbine', rim: C.rimSilver, ra: R + 0.05 };
     c.axle(xa, wo); c.axle(xb, wo);
-    const cowl = xF - 1.95, roofF = xF - 3.15, roofR = xF - 4.0, deck = xF - 4.55;
+    // a tall, rounded nose; the windscreen runs on over the front seats; the roof stays high to the
+    // tailgate, which stands nearly upright
+    const cowl = xF - 1.7, roofF = xF - 2.95, roofR = xF - 4.2, deck = xF - 4.9;
     c.hull({
       keys: [
-        [xF, 0.36, 0.52, 0.56, hw * 0.7, hw * 0.56],
-        [xF - 0.06, 0.27, 0.64, 0.68, hw * 0.87, hw * 0.71],
-        [xF - 0.2, 0.23, 0.74, 0.76, hw * 0.955, hw * 0.8],
-        [xF - 0.6, 0.22, 0.85, 0.86, hw * 0.99, hw * 0.83],
-        [xF - 1.2, 0.215, 0.95, 0.95, hw, hw * 0.82],
-        [cowl, 0.21, 1.03, 1.04, hw, hw * 0.78],
-        [xF - 2.5, 0.21, 1.06, 1.42, hw, hw * 0.71],
-        [roofF, 0.21, 1.08, 1.665, hw, hw * 0.66],
-        [xF - 3.5, 0.215, 1.09, 1.68, hw, hw * 0.66],
-        [roofR, 0.22, 1.1, 1.6, hw, hw * 0.68],
-        [xF - 4.3, 0.24, 1.11, 1.36, hw * 0.99, hw * 0.73],
-        [deck, 0.26, 1.1, 1.17, hw * 0.97, hw * 0.79],
-        [xF - 4.85, 0.3, 1.06, 1.14, hw * 0.93, hw * 0.79],
-        [-xF + 0.05, 0.35, 0.98, 1.06, hw * 0.86, hw * 0.72],
-        [-xF, 0.4, 0.84, 0.9, hw * 0.78, hw * 0.62],
+        [xF, 0.4, 0.64, 0.68, hw * 0.72, hw * 0.58],
+        [xF - 0.06, 0.31, 0.75, 0.78, hw * 0.87, hw * 0.71],
+        [xF - 0.22, 0.26, 0.85, 0.865, hw * 0.955, hw * 0.8],
+        [xF - 0.65, G + 0.04, 0.95, 0.955, hw * 0.99, hw * 0.83],
+        [xF - 1.2, G + 0.025, 1.02, 1.02, hw, hw * 0.82],
+        [cowl, G + 0.02, B - 0.04, B - 0.03, hw, hw * 0.78],
+        [xF - 2.3, G + 0.02, B - 0.02, 1.42, hw, hw * 0.71],
+        [roofF, G + 0.02, B - 0.005, H - 0.025, hw, hw * 0.67],
+        [xF - 3.35, G + 0.02, B, H, hw, hw * 0.66],
+        [xF - 3.9, G + 0.025, B + 0.02, H - 0.03, hw, hw * 0.67],
+        [roofR, G + 0.04, B + 0.035, H - 0.095, hw * 0.995, hw * 0.69],
+        [xF - 4.6, G + 0.08, B + 0.04, 1.42, hw * 0.98, hw * 0.74],
+        [deck, 0.33, B + 0.02, 1.28, hw * 0.94, hw * 0.79],
+        [-xF + 0.04, 0.38, B - 0.04, 1.25, hw * 0.89, hw * 0.78],
+        [-xF, 0.44, 0.94, 1.06, hw * 0.8, hw * 0.68],
       ],
       shape: { glassMid: 0.5, bulge: 0.02, rail: 0.04, low: 0.5 },
-      zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.12, sideR: xF - 4.2, pillars: [[xF - 3.05, 0.05], [xF - 3.95, 0.04]], roof: 'body' },
+      zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.12, sideR: xF - 4.55, pillars: [[xF - 3.05, 0.05], [xF - 3.95, 0.045]], roof: 'body' },
     });
-    c.side(C.lamp, xF - 0.45, xF - 0.05, (x) => 0.66 + (xF - x) * 0.13, (x) => 0.72 + (xF - x) * 0.12);
-    c.side(C.head, xF - 0.4, xF - 0.1, (x) => 0.675 + (xF - x) * 0.13, (x) => 0.69 + (xF - x) * 0.12, { out: 0.007 });
-    c.side(C.tail, -xF + 0.03, -xF + 0.42, 0.95, 1.03, { out: 0.006 });
-    c.end(C.tail, -1, hw * 0.45, hw * 0.75, 0.94, 1.0);
-    c.end(C.grille, 1, -hw * 0.5, hw * 0.5, 0.38, 0.46, { both: false });
-    c.end(C.matte, -1, -hw * 0.66, hw * 0.66, 0.38, 0.5, { both: false });
-    c.top(C.trim, xF - 4.7, xF - 4.6, -hw * 0.72, hw * 0.72, { out: 0.012 });
+    c.side(C.lamp, xF - 0.45, xF - 0.05, (x) => 0.69 + (xF - x) * 0.13, (x) => 0.75 + (xF - x) * 0.12);
+    c.side(C.head, xF - 0.4, xF - 0.1, (x) => 0.705 + (xF - x) * 0.13, (x) => 0.72 + (xF - x) * 0.12, { out: 0.007 });
+    c.side(C.tail, -xF + 0.03, -xF + 0.42, 1.0, 1.07, { out: 0.006 });
+    c.end(C.tail, -1, hw * 0.45, hw * 0.75, 1.0, 1.05);
+    c.end(C.grille, 1, -hw * 0.5, hw * 0.5, 0.42, 0.5, { both: false });
+    c.end(C.matte, -1, -hw * 0.66, hw * 0.66, 0.45, 0.58, { both: false });
+    c.top(C.trim, deck - 0.1, deck - 0.02, -hw * 0.72, hw * 0.72, { out: 0.012 });   // the spoiler lip of the tailgate
     // the falcon wings: a seam along the roof each side, the front doors' cut
     c.top(C.seam, xF - 3.95, xF - 3.05, hw * 0.3, hw * 0.32, { out: 0.003, both: true });
-    c.seams([cowl - 0.06, xF - 3.05, xF - 4.2], 0.3, 1.06);
-    c.handles([xF - 2.6, xF - 3.6], 0.98, { len: 0.18 });
-    c.mirrors(cowl - 0.12, 1.1, { len: 0.21 });
+    c.seams([cowl - 0.06, xF - 3.05, xF - 4.2], G + 0.12, B - 0.04);
+    c.handles([xF - 2.6, xF - 3.6], B - 0.12, { len: 0.18 });
+    c.mirrors(cowl - 0.12, B - 0.01, { len: 0.21 });
   },
 
   modelY(c) {
-    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR;
+    const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR, H = c.v.height, B = c.v.belt, G = c.v.clearance;
     const xa = xF - 0.89, xb = xa - c.v.wheelbase;
     const wo = { w: 0.255, rimR: 0.241, style: 'aero', blade: C.rimSilver, ra: R + 0.05 };
     c.axle(xa, wo); c.axle(xb, wo);
-    const cowl = xF - 1.56, roofF = xF - 2.62, roofR = xF - 3.62, deck = xF - 4.32;
+    // a high, short nose; the roof falls as a fastback hatch to a lip over a tall tail
+    const cowl = xF - 1.5, roofF = xF - 2.5, roofR = xF - 3.65, deck = xF - 4.6;
     c.hull({
       keys: [
-        [xF, 0.37, 0.56, 0.6, hw * 0.72, hw * 0.58],
-        [xF - 0.05, 0.28, 0.67, 0.71, hw * 0.88, hw * 0.72],
-        [xF - 0.18, 0.235, 0.76, 0.77, hw * 0.96, hw * 0.8],
-        [xF - 0.55, 0.225, 0.86, 0.855, hw * 0.995, hw * 0.83],
-        [xF - 1.05, 0.22, 0.93, 0.925, hw, hw * 0.81],
-        [cowl, 0.22, 0.98, 0.99, hw, hw * 0.77],
-        [xF - 2.1, 0.22, 1.0, 1.32, hw, hw * 0.7],
-        [roofF, 0.22, 1.02, 1.585, hw, hw * 0.65],
-        [xF - 3.1, 0.222, 1.03, 1.62, hw, hw * 0.64],
-        [roofR, 0.228, 1.045, 1.53, hw, hw * 0.67],
-        [xF - 4.0, 0.24, 1.055, 1.29, hw * 0.99, hw * 0.73],
-        [deck, 0.27, 1.06, 1.13, hw * 0.97, hw * 0.79],
-        [xF - 4.55, 0.31, 1.03, 1.11, hw * 0.93, hw * 0.79],
-        [-xF + 0.05, 0.35, 0.95, 1.03, hw * 0.86, hw * 0.72],
-        [-xF, 0.41, 0.82, 0.88, hw * 0.78, hw * 0.62],
+        [xF, 0.38, 0.62, 0.66, hw * 0.74, hw * 0.6],
+        [xF - 0.05, 0.3, 0.72, 0.75, hw * 0.88, hw * 0.72],
+        [xF - 0.2, 0.25, 0.82, 0.835, hw * 0.96, hw * 0.8],
+        [xF - 0.6, G + 0.04, 0.91, 0.915, hw * 0.995, hw * 0.83],
+        [xF - 1.05, G + 0.025, 0.975, 0.97, hw, hw * 0.81],
+        [cowl, G + 0.02, B - 0.05, B - 0.04, hw, hw * 0.77],
+        [xF - 2.05, G + 0.02, B - 0.025, 1.34, hw, hw * 0.7],
+        [roofF, G + 0.02, B - 0.01, H - 0.035, hw, hw * 0.66],
+        [xF - 2.95, G + 0.02, B, H, hw, hw * 0.65],
+        [xF - 3.35, G + 0.025, B + 0.015, H - 0.03, hw, hw * 0.66],
+        [roofR, G + 0.035, B + 0.03, H - 0.085, hw * 0.995, hw * 0.68],
+        [xF - 4.15, G + 0.07, B + 0.045, 1.33, hw * 0.98, hw * 0.74],
+        [deck, 0.31, B + 0.035, 1.16, hw * 0.94, hw * 0.8],
+        [-xF + 0.04, 0.37, B - 0.02, 1.12, hw * 0.88, hw * 0.77],
+        [-xF, 0.43, 0.9, 0.99, hw * 0.8, hw * 0.66],
       ],
       shape: { glassMid: 0.5, bulge: 0.025, rail: 0.035, low: 0.5 },
-      zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.1, sideR: xF - 4.1, pillars: [[xF - 2.98, 0.05]], roof: 'glass', sill: C.matte },
+      zones: { cowl, roofF, roofR, deck, sideF: cowl - 0.1, sideR: xF - 4.15, pillars: [[xF - 2.98, 0.05]], roof: 'glass', sill: C.matte },
     });
     // the 2026 face: a thin light bar right across the nose, the headlamps low in the corners
-    c.end(C.head, 1, -hw * 0.66, hw * 0.66, 0.69, 0.705, { both: false, inset: -0.035 });
-    c.side(C.head, xF - 0.14, xF - 0.02, 0.715, 0.73, { out: 0.006 });
-    c.side(C.lamp, xF - 0.3, xF - 0.03, 0.47, 0.56, { out: 0.006 });
-    c.side(C.head, xF - 0.24, xF - 0.06, 0.5, 0.53, { out: 0.008 });
-    c.end(C.grille, 1, -hw * 0.5, hw * 0.5, 0.39, 0.46, { both: false });
+    c.end(C.head, 1, -hw * 0.66, hw * 0.66, 0.7, 0.715, { both: false });
+    c.side(C.head, xF - 0.16, xF - 0.06, 0.72, 0.735, { out: 0.006 });
+    c.side(C.lamp, xF - 0.3, xF - 0.03, 0.5, 0.59, { out: 0.006 });
+    c.side(C.head, xF - 0.24, xF - 0.06, 0.53, 0.56, { out: 0.008 });
+    c.end(C.grille, 1, -hw * 0.5, hw * 0.5, 0.42, 0.49, { both: false });
     // the tail: one light bar across, wrapping into the sides
-    c.end(C.tail, -1, -hw * 0.82, hw * 0.82, 0.95, 0.975, { both: false, inset: 0.04 });
-    c.side(C.tail, -xF + 0.03, -xF + 0.34, 0.95, 1.0, { out: 0.006 });
-    c.end(C.matte, -1, -hw * 0.66, hw * 0.66, 0.38, 0.5, { both: false });
-    c.top(C.trim, xF - 4.42, xF - 4.34, -hw * 0.72, hw * 0.72, { out: 0.012 });
-    c.seams([cowl - 0.05, xF - 2.98, xF - 4.12], 0.32, 1.0);
-    c.handles([xF - 2.32, xF - 3.5], 0.93, { len: 0.16 });
-    c.mirrors(cowl - 0.12, 1.06, { len: 0.2 });
+    c.end(C.tail, -1, -hw * 0.82, hw * 0.82, 1.0, 1.025, { both: false });
+    c.side(C.tail, -xF + 0.03, -xF + 0.34, 1.0, 1.05, { out: 0.006 });
+    c.end(C.matte, -1, -hw * 0.66, hw * 0.66, 0.44, 0.56, { both: false });
+    c.top(C.trim, deck - 0.1, deck - 0.02, -hw * 0.72, hw * 0.72, { out: 0.012 });
+    c.seams([cowl - 0.05, xF - 2.98, xF - 4.12], G + 0.13, B - 0.05);
+    c.handles([xF - 2.32, xF - 3.5], B - 0.12, { len: 0.16 });
+    c.mirrors(cowl - 0.12, B - 0.01, { len: 0.2 });
   },
 
   roadster08(c) {
@@ -1538,10 +1549,15 @@ const BODIES = {
   cyberroadster(c) {
     const { L, W } = c, hw = W / 2, xF = L / 2, R = c.v.wheelR;
     const xa = xF - 0.86, xb = xa - c.v.wheelbase;
-    c.axle(xa, { w: 0.255, rimR: 0.254, style: 'blade', rim: C.rimBlack, arch: 'trapezoid', ra: R + 0.07, caliper: 'red' });
-    c.axle(xb, { w: 0.335, rimR: 0.266, style: 'blade', rim: C.rimBlack, arch: 'trapezoid', ra: R + 0.08, R: R + 0.02, caliper: 'red' });
-    const cowl = 0.62, open = [-1.18, -0.02];
-    // dark brushed sheet steel, a glossy teal bonnet and a few teal facets
+    // the front wheels in trapezoid arches; the rear ones, drag radials an eighth taller and half as wide
+    // again, stand out of the body on their own (the body narrows to a frame between them)
+    const [wFront, wRear] = c.v.tyreW, Rr = c.v.rearWheelR;
+    c.axle(xa, { w: wFront, rimR: 0.254, style: 'blade', rim: C.rimBlack, arch: 'trapezoid', ra: R + 0.07, caliper: 'red' });
+    c.axle(xb, { w: wRear, rimR: 0.27, style: 'blade', rim: C.rimBlack, R: Rr, open: true, z: c.v.wheelSpan / 2 - wRear / 2, caliper: 'red', tread: true });
+    // the side pods end just ahead of the rear tyres in a slanted blade; behind it the frame is narrower
+    // than the inner faces of the tyres
+    const cowl = 0.62, open = [-0.9, -0.02], waist = xb + Rr + 0.3, frameX = xb + Rr + 0.03;
+    // dark brushed sheet steel, a glossy teal bonnet and a few teal facets; the back is a black frame
     const teal = bodyPaint('teal'), sheet = { color: 0x6c7074, metal: 0.78, rough: 0.34, brushed: true, body: true };
     c.paint = c.burnt ? c.paint : sheet;
     c.hull({
@@ -1552,17 +1568,19 @@ const BODIES = {
         [cowl, 0.19, 0.83, 0.86, hw, hw * 0.82],
         [0.02, 0.19, 0.85, 1.06, hw * 0.98, hw * 0.6],
         [-0.02, 0.19, 0.85, 0.86, hw * 0.98, hw * 0.82],
-        [-1.16, 0.2, 0.87, 0.88, hw, hw * 0.84],
-        [-1.3, 0.21, 0.9, 0.95, hw, hw * 0.86],
-        [-xF + 0.06, 0.28, 0.88, 0.92, hw * 0.98, hw * 0.88],
-        [-xF, 0.34, 0.84, 0.88, hw * 0.95, hw * 0.84],
+        [waist, 0.2, 0.86, 0.87, hw, hw * 0.84],
+        [waist - 0.13, 0.22, 0.88, 0.9, hw * 0.9, hw * 0.8],
+        [frameX, 0.27, 0.9, 0.93, hw * 0.7, hw * 0.62],
+        [-1.3, 0.3, 0.92, 0.95, hw * 0.68, hw * 0.62],
+        [-xF + 0.06, 0.3, 0.88, 0.92, hw * 0.66, hw * 0.6],
+        [-xF, 0.34, 0.84, 0.88, hw * 0.64, hw * 0.58],
       ],
       section: flatSection, smooth: false, step: 0.14, smoothDeg: 16,
       shape: { chamfer: 0.05, belt: 0.99 },
       zones: {
         cowl, roofF: 0.0, roofR: -1, deck: 0.0, side: false, roof: 'glass', open, rail: C.trim,
-        upper: (x) => (x > cowl - 0.02 ? teal : x < -1.32 ? C.frame : undefined),
-        lower: (x, j) => (j === 2 && x < xa - 0.45 && x > xa - 1.25 ? teal : undefined),
+        upper: (x) => (x > cowl - 0.02 ? teal : x < frameX + 0.02 ? C.frame : undefined),
+        lower: (x, j) => (x < frameX + 0.02 ? C.frame : j === 2 && x < xa - 0.45 && x > xa - 1.25 ? teal : undefined),
       },
       capR: C.frame,
       inner: (x) => x > open[0] && x < open[1],
@@ -1589,13 +1607,13 @@ const BODIES = {
     for (const z of [-hw, hw - 0.02]) c.m.box(c.p(C.trim), 0.62, 0.22, 0.02, wx, 1.17, z);
     // the diffuser: tall black fins under the tail, the lamps in thin strips
     for (let i = 0; i < 7; i++) c.m.plate(c.p(C.trim), [[-xF - 0.18, 0.06], [-xF + 0.5, 0.06], [-xF + 0.5, 0.3], [-xF - 0.18, 0.74]], (i - 3) * 0.24 - 0.007, (i - 3) * 0.24 + 0.007);
-    c.end(C.tail, -1, -hw * 0.7, hw * 0.7, 0.8, 0.815, { both: false });
+    c.end(C.tail, -1, -hw * 0.55, hw * 0.55, 0.8, 0.815, { both: false });
     c.end(C.head, 1, -hw * 0.66, hw * 0.66, 0.295, 0.31, { both: false });
     c.end(C.matte, 1, -hw * 0.76, hw * 0.76, 0.25, 0.285, { both: false });
     // the splitter under the nose
     c.m.plate(c.p(C.trim), [[xF - 0.55, 0.1], [xF + 0.12, 0.1], [xF + 0.12, 0.13], [xF - 0.55, 0.16]], -hw * 0.95, hw * 0.95);
     // rivets along the panel edges
-    for (let x = xb + 0.6; x < xa - 0.4; x += 0.22) c.side(C.rivet, x, x + 0.02, 0.7, 0.72, { out: 0.006, nx: 1, ny: 1 });
+    for (let x = waist + 0.04; x < xa - 0.4; x += 0.22) c.side(C.rivet, x, x + 0.02, 0.7, 0.72, { out: 0.006, nx: 1, ny: 1 });
     c.seams([xa - 0.45, -0.1], 0.22, 0.84, { w: 0.006 });
     c.mirrors(0.55, 0.92, { len: 0.16, paint: C.trim, h: 0.07 });
   },

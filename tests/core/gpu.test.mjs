@@ -1,5 +1,52 @@
 import { test, assert } from '../harness.mjs';
 import { gpuInfo } from '../../src/core/gpu.js';
+import { t, setLang, getLang } from '../../src/config.js';
+// the lines of the main menu's hint about integrated graphics (the module touches the DOM only when built)
+import { menuHintKeys } from '../../src/ui/gpu.js';
+
+// The hint in both languages: R06/R07/R15i. A plain tab names the launcher first; Windows and the NVIDIA
+// panel come after it as the other way. Under the launcher the hint leads to the game's own setting.
+const LAUNCHER = { launcher: true, gpus: [{ id: 'high', name: 'NVIDIA GeForce RTX 4070 Laptop GPU', kind: 'discrete' }, { id: 'default', name: 'Intel(R) Iris(R) Xe Graphics', kind: 'integrated' }], choice: 'default' };
+const OS_WAY = /Windows|NVIDIA/;
+const LAUNCH_WAY = (s) => s.includes('npm run play') && s.includes('play-windows.cmd');
+
+function hintTexts(kind, launcher, lang) {
+  const keep = getLang();
+  setLang(lang);
+  try { return menuHintKeys(kind, launcher).map((k) => t(k)); } finally { setLang(keep); }
+}
+
+test('gpu hint: in a plain tab the launcher is the first and main way, Windows and NVIDIA only after it', () => {
+  for (const lang of ['ru', 'en']) {
+    for (const kind of ['integrated', 'software']) {
+      const lines = hintTexts(kind, null, lang);
+      assert.ok(lines.length > 0, lang + ' ' + kind + ': the hint has text');
+      for (const s of lines) assert.ok(typeof s === 'string' && s.length > 0 && !/^gpu[A-Z]/.test(s), lang + ': a string missing from the table: ' + s);
+      const launch = lines.findIndex(LAUNCH_WAY), os = lines.findIndex((s) => OS_WAY.test(s));
+      assert.ok(launch >= 0, `${lang} ${kind}: the hint names npm run play and play-windows.cmd`);
+      assert.ok(os === -1 || os > launch, `${lang} ${kind}: Windows or NVIDIA comes before the launcher: ${lines.join(' | ')}`);
+      // the launcher line itself does not send to Windows first
+      const first = lines[launch], w = first.search(OS_WAY);
+      assert.ok(w === -1 || w > first.indexOf('npm run play'), `${lang}: the launcher line starts with Windows: ${first}`);
+      if (kind === 'integrated') assert.equal(launch, 0, lang + ': on integrated graphics the launcher is the first line');
+    }
+  }
+});
+
+test('gpu hint: under the launcher it leads to the game\'s own "Graphics card" setting, not to Windows', () => {
+  for (const lang of ['ru', 'en']) {
+    const lines = hintTexts('integrated', LAUNCHER, lang);
+    assert.ok(lines.length > 0, lang + ': the hint has text');
+    assert.ok(!lines.some((s) => OS_WAY.test(s)), `${lang}: no Windows or NVIDIA under the launcher: ${lines.join(' | ')}`);
+    setLang(lang);
+    const item = t('gpuLabel');
+    setLang('ru');
+    assert.ok(lines[0].includes(item), `${lang}: the first line names the setting «${item}»: ${lines[0]}`);
+    // one card only: nothing to choose, and still no Windows
+    const one = hintTexts('integrated', { ...LAUNCHER, gpus: LAUNCHER.gpus.slice(1) }, lang);
+    assert.ok(one.length > 0 && !one.some((s) => OS_WAY.test(s)), lang + ': one card under the launcher');
+  }
+});
 
 // Renderer strings as browsers report them (WEBGL_debug_renderer_info or gl.RENDERER).
 const CASES = [

@@ -1,12 +1,14 @@
 // The graphics card in the interface (G01): a line in the settings that names it, and a hint in the
 // main menu when the game runs on integrated graphics or without a graphics card at all, telling how to
-// put the browser on the fast card. A web page cannot pick the GPU itself, and changing Windows or driver
-// settings for the player is not ours to do, so the game says where it runs and how to change it.
+// get the fast card. A web page cannot pick the GPU itself, and changing Windows or driver settings for
+// the player is not ours to do, so the game says where it runs and how to change it.
 // The hint shows in the main menu until the player closes it; the choice is kept in the settings
 // (settings.gpuHintClosed). The F3 line (hud.js) shows the card's name next to the FPS.
 // Wave 15: under the launcher (tools/play.mjs, GET /launcher/info) the settings get select#s-gpu with the
 // cards of the system; a change saves the settings and asks the launcher to restart the window on the
 // chosen card. In a plain tab the line says honestly that the browser chooses and how to get a choice.
+// The menu hint (menuHintKeys) names the launcher first in a plain tab, Windows and NVIDIA only as the
+// other way; under the launcher it leads to the game's own "Graphics card" setting.
 
 import { t } from '../config.js';
 
@@ -21,7 +23,20 @@ const STYLE = `
 .gpu-hint-now b { color: var(--accent-2); font-weight: 600; }
 .gpu-hint-s { color: var(--muted); }
 .gpu-hint .btn { align-self: flex-start; font-size: 14px; padding: 7px 14px; margin-top: 4px; }
+.gpu-hint-b { display: flex; flex-wrap: wrap; gap: 8px; }
 `;
+
+/**
+ * The keys of the strings under the hint's title, in order. kind: core/gpu's kind of the graphics; launcher:
+ * the answer of GET /launcher/info, or null in a plain tab. A plain tab names the launcher first and the
+ * Windows or NVIDIA settings only as the other way; under the launcher the hint leads to the game's own
+ * "Graphics card" setting (or says there is one card only) and never to Windows.
+ */
+export function menuHintKeys(kind, launcher) {
+  const soft = kind === 'software' ? ['gpuSoftText'] : [];
+  if (launcher && launcher.launcher) return [...soft, launcher.gpus && launcher.gpus.length > 1 ? 'gpuHintPick' : 'gpuOnlyOne'];
+  return [...soft, 'gpuHintLauncher', 'gpuHintOther'];
+}
 
 export class GpuInfoUi {
   constructor(game) {
@@ -34,23 +49,27 @@ export class GpuInfoUi {
       document.head.appendChild(style);
     }
     this._settingsRow();
-    this._menuHint();
     this.launcher = null;
+    this.box = null;
     this._probe();
   }
 
-  /** Ask the launcher who we are. Silent on file:// , on the site and when there is no launcher. */
+  /**
+   * Ask the launcher who we are. Silent on file:// , on the site and when there is no launcher. The main
+   * menu's hint is built after the answer, so it names the right way at once.
+   */
   async _probe() {
     const h = location.hostname;
-    if (!/^https?:$/.test(location.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(h)) { this._note('gpuTabNote'); return; }
+    if (!/^https?:$/.test(location.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(h)) { this._note('gpuTabNote'); this._menuHint(); return; }
     let info = null;
     try {
       const r = await fetch('/launcher/info', { cache: 'no-store' });
       if (r.ok) info = await r.json();
     } catch (e) { /* no launcher */ }
-    if (!info || !info.launcher) { this._note('gpuTabNote'); return; }
+    if (!info || !info.launcher) { this._note('gpuTabNote'); this._menuHint(); return; }
     this.launcher = info;
     this._pickRow();
+    this._menuHint();
     // debug aid: the launcher prints what the game really renders on
     try {
       fetch('/launcher/seen', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -159,30 +178,46 @@ export class GpuInfoUi {
     out.title = this.gpu.raw || '';
   }
 
-  /** The hint in the main menu, built only when the card calls for it and the player has not closed it. */
+  /**
+   * The hint in the main menu, built only when the card calls for it and the player has not closed it. Its
+   * lines come from menuHintKeys: built once the launcher probe has answered, and built again when it says
+   * the launcher is there (then a button opens the settings at select#s-gpu).
+   */
   _menuHint() {
     const g = this.game;
     if (!this.gpu.hint || g.settings.gpuHintClosed) return;
     const panel = document.querySelector('#screen-menu .panel');
     if (!panel) return;
+    if (this.box) this.box.remove();
     const soft = this.gpu.kind === 'software';
+    const pick = !!document.getElementById('s-gpu');
     const box = document.createElement('div');
     box.className = 'gpu-hint';
     box.id = 'gpu-hint';
     box.innerHTML = `
       <div class="gpu-hint-t" data-t="${soft ? 'gpuSoftTitle' : 'gpuHintTitle'}"></div>
       <div class="gpu-hint-now"><span data-t="gpuNow"></span> <b></b></div>
-      ${soft ? '<div class="gpu-hint-s" data-t="gpuSoftText"></div>' : ''}
-      <div class="gpu-hint-s" data-t="gpuHintWindows"></div>
-      <div class="gpu-hint-s" data-t="gpuHintNvidia"></div>
-      <div class="gpu-hint-s" data-t="gpuHintRestart"></div>
-      <button class="btn" id="gpu-hint-close" data-t="gpuHintClose"></button>`;
+      ${menuHintKeys(this.gpu.kind, this.launcher).map((k) => `<div class="gpu-hint-s" data-t="${k}"></div>`).join('')}
+      <div class="gpu-hint-b">
+        ${pick ? '<button class="btn" id="gpu-hint-open" data-t="gpuHintOpen"></button>' : ''}
+        <button class="btn" id="gpu-hint-close" data-t="gpuHintClose"></button>
+      </div>`;
     box.querySelectorAll('[data-t]').forEach((n) => { n.textContent = t(n.dataset.t); });
     box.querySelector('b').textContent = this.name;
     const hint = panel.querySelector('.hint');
     panel.insertBefore(box, hint || null);
     box.querySelector('#gpu-hint-close').onclick = () => this.close();
+    if (pick) box.querySelector('#gpu-hint-open').onclick = () => this.openPick();
     this.box = box;
+  }
+
+  /** The settings screen, at the card's select (under the launcher). */
+  openPick() {
+    const hud = this.game.hud;
+    if (hud && hud.openSettings) hud.openSettings('menu');
+    this._fillPick();
+    const sel = document.getElementById('s-gpu');
+    if (sel) { sel.scrollIntoView({ block: 'center' }); sel.focus(); }
   }
 
   /** Close the hint for good: it does not come back after a reload. */
