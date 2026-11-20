@@ -4,12 +4,16 @@
 // settings for the player is not ours to do, so the game says where it runs and how to change it.
 // The hint shows in the main menu until the player closes it; the choice is kept in the settings
 // (settings.gpuHintClosed). The F3 line (hud.js) shows the card's name next to the FPS.
+// Wave 15: under the launcher (tools/play.mjs, GET /launcher/info) the settings get select#s-gpu with the
+// cards of the system; a change saves the settings and asks the launcher to restart the window on the
+// chosen card. In a plain tab the line says honestly that the browser chooses and how to get a choice.
 
 import { t } from '../config.js';
 
 const STYLE = `
 .row.gpu-row { grid-template-columns: 1fr auto; }
 .row.gpu-row output { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpu-note { margin: 4px 0 10px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 .gpu-hint { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding: 12px 14px; font-size: 13px; line-height: 1.4;
   letter-spacing: 0.02em; color: var(--ink); background: rgba(232, 137, 43, 0.12); border: 1px solid rgba(232, 137, 43, 0.55); }
 .gpu-hint.hidden { display: none; }
@@ -31,6 +35,98 @@ export class GpuInfoUi {
     }
     this._settingsRow();
     this._menuHint();
+    this.launcher = null;
+    this._probe();
+  }
+
+  /** Ask the launcher who we are. Silent on file:// , on the site and when there is no launcher. */
+  async _probe() {
+    const h = location.hostname;
+    if (!/^https?:$/.test(location.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(h)) { this._note(t('gpuTabNote')); return; }
+    let info = null;
+    try {
+      const r = await fetch('/launcher/info', { cache: 'no-store' });
+      if (r.ok) info = await r.json();
+    } catch (e) { /* no launcher */ }
+    if (!info || !info.launcher) { this._note(t('gpuTabNote')); return; }
+    this.launcher = info;
+    this._pickRow();
+    // debug aid: the launcher prints what the game really renders on
+    try {
+      fetch('/launcher/seen', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ renderer: this.gpu.raw || this.gpu.name || '' }) }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+
+  /** The explanation under the card's line (a plain tab, or a launcher with nothing to choose). */
+  _note(text) {
+    const row = document.getElementById('o-gpu') && document.getElementById('o-gpu').parentNode;
+    if (!row) return;
+    let n = document.getElementById('gpu-note');
+    if (!n) {
+      n = document.createElement('div');
+      n.id = 'gpu-note';
+      n.className = 'gpu-note';
+      row.after(n);
+    }
+    n.textContent = text;
+  }
+
+  _optionLabel(o) { return o.name + ' — ' + t(o.id === 'high' ? 'gpuFast' : 'gpuWindows'); }
+
+  /** Can the card be changed right now? Only in the main menu and on pause. */
+  get canSwitch() { const s = this.game.state; return s === 'menu' || s === 'paused'; }
+
+  /** select#s-gpu with the cards of the system (only when there is more than one). */
+  _pickRow() {
+    const info = this.launcher;
+    if (document.getElementById('s-gpu')) return;
+    if (!info.gpus || info.gpus.length < 2) { this._note(t('gpuOnlyOne')); return; }
+    const anchor = document.getElementById('gpu-note') || (document.getElementById('o-gpu') && document.getElementById('o-gpu').parentNode);
+    if (!anchor) return;
+    const row = document.createElement('label');
+    row.className = 'row';
+    row.innerHTML = '<span></span><select id="s-gpu"></select>';
+    anchor.after(row);
+    const sel = row.querySelector('select');
+    this._fillPick();
+    sel.addEventListener('change', () => this._choose(sel.value));
+    // the settings screen has no hook of its own: look at it when it is shown
+    const screen = document.getElementById('screen-settings');
+    if (screen) new MutationObserver(() => { if (!screen.classList.contains('hidden')) this._fillPick(); }).observe(screen, { attributes: true, attributeFilter: ['class'] });
+    this._fillPick();
+  }
+
+  _fillPick() {
+    const sel = document.getElementById('s-gpu');
+    if (!sel || !this.launcher) return;
+    sel.parentNode.querySelector('span').textContent = t('gpuPick');
+    sel.innerHTML = '';
+    for (const o of this.launcher.gpus) {
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = this._optionLabel(o);
+      sel.appendChild(op);
+    }
+    sel.value = this.launcher.choice;
+    sel.disabled = !this.canSwitch;
+    sel.title = sel.disabled ? t('gpuPauseOnly') : '';
+  }
+
+  /** Save the settings, ask the launcher to restart the window on the card; the new window opens in the main menu. */
+  async _choose(id) {
+    const sel = document.getElementById('s-gpu');
+    const fail = () => { this._note(t('gpuFailed')); if (sel) sel.value = this.launcher.choice; };
+    if (!this.canSwitch || id === this.launcher.choice) { if (sel) sel.value = this.launcher.choice; return; }
+    if (this.game.state === 'paused' && !window.confirm(t('gpuConfirm'))) { if (sel) sel.value = this.launcher.choice; return; }
+    this.game.saveSettings();
+    try {
+      const r = await fetch('/launcher/gpu', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ choice: id }) });
+      const body = r.ok ? await r.json() : null;
+      if (!body || !body.ok) { fail(); return; }
+      this.launcher.choice = id;
+      this._note(body.restarting ? t('gpuRestarting') : '');
+    } catch (e) { fail(); }
   }
 
   /** Name of the card as the interface shows it. */

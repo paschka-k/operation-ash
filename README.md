@@ -20,6 +20,19 @@ A first-person shooter in the style of Call of Duty, set in a ruined city block.
 
 Rebuild the single file with `npm run build`.
 
+### Launcher and graphics card
+
+A web page cannot choose the graphics card: the browser does, and on a laptop with built-in and discrete graphics it often takes the built-in one. The launcher gets around this without touching Windows or your browser settings:
+
+- `npm run play`, or a double click on `play-windows.cmd` (Node.js and one `npm install` needed). It serves the game on 127.0.0.1 (first free port from 5180) and opens it in Chrome, otherwise Edge, as a window without browser panels. Closing the window ends the launcher. Without Chrome and Edge it says so in one line and opens your default browser.
+- The window uses its own profile in `%LOCALAPPDATA%\OperationAsh\browser`; your everyday browser, its profile and flags, the registry and Windows settings are not touched. Nothing is downloaded.
+- In Settings, "Play on graphics card" lists the cards of your system (names from Windows). Pick another one: the window restarts on it and opens in the main menu. Change it in the main menu or on pause; on pause the current fight is lost. The choice is kept in `%LOCALAPPDATA%\OperationAsh\launcher.json`.
+- In an ordinary tab (the site, `dist/game.html`, `npm start`) the line "Graphics card" shows what the game draws on and says that the browser chooses; the choice appears only under the launcher.
+
+Technically the fast card is the browser key `--force_high_performance_gpu`; the default is no key.
+
+Лаунчер (по-русски): `npm run play` или двойной щелчок по `play-windows.cmd` открывает игру отдельным окном; в «Настройках» пункт «Играть на видеокарте» перезапускает окно на выбранной видеокарте. Настройки Windows и браузера не нужны.
+
 ## Controls
 
 | Key | Action |

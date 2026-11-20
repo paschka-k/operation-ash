@@ -248,6 +248,16 @@ const STR = {
     gpuHintNvidia: 'Или в панели управления NVIDIA: «Управление параметрами 3D → Программные настройки», выберите браузер и «Высокопроизводительный процессор NVIDIA».',
     gpuHintRestart: 'Затем полностью закройте и снова откройте браузер.',
     gpuHintClose: 'Понятно',
+    // ---- wave 15: gpu
+    gpuPick: 'Играть на видеокарте',
+    gpuFast: 'быстрая',
+    gpuWindows: 'по выбору Windows',
+    gpuPauseOnly: 'Видеокарту можно менять в главном меню или на паузе.',
+    gpuConfirm: 'Окно игры перезапустится на другой видеокарте, текущий бой будет потерян. Продолжить?',
+    gpuRestarting: 'Окно перезапускается…',
+    gpuFailed: 'Не удалось сменить видеокарту.',
+    gpuOnlyOne: 'Игра запущена лаунчером, но в системе одна видеокарта: выбирать не из чего.',
+    gpuTabNote: 'Браузер сам выбирает видеокарту, и страница на это повлиять не может. Выбрать её в игре можно, запустив игру лаунчером из папки игры: npm run play или play-windows.cmd. Второй путь: «Параметры → Система → Дисплей → Графика» в Windows.',
 
     // ---- wave 14: main keys on the settings screen, the grenade tip of wave 1
     mainKeys: 'Главные клавиши',
@@ -437,6 +447,16 @@ const STR = {
     gpuHintNvidia: 'Or in the NVIDIA Control Panel: "Manage 3D settings → Program Settings", pick the browser and "High-performance NVIDIA processor".',
     gpuHintRestart: 'Then close the browser completely and open it again.',
     gpuHintClose: 'Got it',
+    // ---- wave 15: gpu
+    gpuPick: 'Play on graphics card',
+    gpuFast: 'fast',
+    gpuWindows: 'Windows default',
+    gpuPauseOnly: 'The graphics card can be changed in the main menu or on pause.',
+    gpuConfirm: 'The game window will restart on another graphics card and the current fight will be lost. Continue?',
+    gpuRestarting: 'The window is restarting…',
+    gpuFailed: 'Could not change the graphics card.',
+    gpuOnlyOne: 'The game runs through the launcher, but the system has one graphics card: nothing to choose from.',
+    gpuTabNote: 'The browser picks the graphics card itself and a page cannot change that. To choose it in the game, start the game with the launcher from the game folder: npm run play or play-windows.cmd. The other way: "Settings → System → Display → Graphics" in Windows.',
 
     // ---- wave 14: main keys on the settings screen, the grenade tip of wave 1
     mainKeys: 'Main keys',

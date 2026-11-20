@@ -1,6 +1,6 @@
 // Tool tests (not game logic): the glb packer used by tools/fetch-models.mjs.
-// Run with npm run test:tools. The game's rules are tested separately through src/core.
-import { test, assert, run } from '../harness.mjs';
+// Run with npm run test:tools (tests/tools/run.mjs picks up every *.test.mjs). The game's rules are tested separately through src/core.
+import { test, assert } from '../harness.mjs';
 import { packGlb, unpackGlb } from '../../tools/glb.mjs';
 
 const gltf = () => ({
@@ -66,5 +66,3 @@ test('the input gltf object is not modified', () => {
   packGlb(g, Buffer.alloc(4), new Map([['tex_diff_1k.jpg', Buffer.from('x')], ['tex_nor_1k.jpg', Buffer.from('y')]]));
   assert.equal(JSON.stringify(g), before);
 });
-
-await run();
