@@ -14,11 +14,45 @@ import { pbrMaterial } from '../render/materials.js';
 import { getScanParts } from '../render/models.js';
 import { lightOnly, writeNothing } from './pool.js';
 import { MAP_HALF } from '../config.js';
-import { routesFor } from '../core/routes.js';
+import { routesFor, onRoute, ROUTE_KEEP_CLEAR } from '../core/routes.js';
 import { generateLayout } from '../core/mapgen.js';
 import { buildGenerated, placeLayout, MAP_SEEDS } from './mapbuild.js';
+import { buildVehicle } from './fleet.js';
+import { vehicleOf, pickVehicle, placeOf } from '../core/fleet.js';
 
 const STOREY = 3.4;
+
+/** The paint a car of the block wears when its spot names none: by the material it used to be drawn in. */
+const PAINT_BY_MAT = { metalGray: 'silver', metalRed: 'red', metalYellow: 'white', metalGreen: 'green' };
+
+/**
+ * The block's parking places of wave 15 (G07-G14), one model each, so that every model of the set stands on
+ * the block. Placed after every call of world.rng, clear of the riders' loops (ROUTE_KEEP_CLEAR + 0.5 m), of
+ * the spawn and supply points, the player's start and the crates and barrels of World._places.
+ * yaw: 0 nose to +x, PI nose to -x, PI/2 nose to -z, -PI/2 nose to +z.
+ */
+const PARKING = [
+  { id: 'semi', x: 31.5, z: 15.5, yaw: Math.PI, paint: 'white' },          // the tractor by the container yard
+  { id: 'cyberroadster', x: 14.8, z: 9.6, yaw: 0 },
+  { id: 'modelS', x: -27.5, z: 7.7, yaw: Math.PI, paint: 'black' },
+  { id: 'modelX', x: -38.6, z: 8.0, yaw: 0, paint: 'silver' },
+  { id: 'badger', x: -8.6, z: 16.8, yaw: -Math.PI / 2, paint: 'matte' },
+  { id: 'cybertruck', x: 7.6, z: -28.2, yaw: Math.PI / 2, paint: 'steel' },
+];
+
+/**
+ * The colliders of a parked model in its own frame (x along it): [x0, x1, y0, y1, half width]. A car is
+ * waist-high cover like the block's cars always were; the van, the pickup and the tractor get their cab too.
+ */
+function parkedBoxes(v) {
+  const L = v.length / 2, hw = v.width / 2;
+  switch (v.id) {
+    case 'semi': return [[0.55, L - 0.1, 0, 3.6, hw - 0.05], [-L + 0.1, 0.55, 0, 1.3, hw - 0.1]];
+    case 'badger': return [[-L + 0.1, L - 0.1, 0, 1.0, hw - 0.03], [-L + 0.15, L - 0.9, 1.0, 2.0, hw - 0.08]];
+    case 'cybertruck': return [[-L + 0.1, L - 0.1, 0, 1.15, hw - 0.03], [-0.9, 1.3, 1.15, 1.7, hw - 0.2]];
+    default: return [[-L + 0.12, L - 0.12, 0, 0.9, hw - 0.03]];
+  }
+}
 
 function bakeBoxGeometry(w, h, d, cx, cy, cz, rx, ry, rz, texW, texH) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -170,6 +204,7 @@ export class World {
     this.fireSpots = [];
     this.batches = new Map();
     this.casterProxies = [];   // plain shapes that cast the shadow of detailed geometry (see _flush)
+    this.aoProxies = [];       // plain shapes (with normals) the occlusion pass sees in place of detailed geometry
     this.root = new THREE.Group();
     this.scene.add(this.root);
     this.playerStart = { x: 0, z: 36, yaw: 0 };
@@ -276,7 +311,8 @@ export class World {
           if (!sameSide) casters.set(mat.side, (sameSide = []));
           sameSide.push(geo);
         }
-        if (!mat.transparent && !cutout) solids.push(geo);
+        // a parked vehicle (world/fleet.js) shows the occlusion pass its low hull (aoProxies) instead
+        if (!mat.transparent && !cutout && !mat.userData.aoProxy) solids.push(geo);
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         mesh.frustumCulled = true;
@@ -291,6 +327,7 @@ export class World {
       sameSide.push(...this.casterProxies);
       this.casterProxies = [];
     }
+    if (this.aoProxies.length) { solids.push(...this.aoProxies); this.aoProxies = []; }
     this.root.add(chunks);
     this.chunkGroup = chunks;    // dispose() forgets its swap in the occlusion pass
     for (const [side, geos] of casters) this.root.add(shadowCaster(geos, side));
@@ -709,38 +746,74 @@ export class World {
     }
   }
 
-  car(cx, cz, yaw = 0, paint = this.m.metalChar) {
+  /**
+   * A car on a street of the block: the collider of always (4.3 x 1.8, 0.9 m high), drawn as a model of the
+   * set (world/fleet.js). look: {id, state, paint, flip, tarp}; without it the model comes from the spot's
+   * own seed (never world.rng) and a car in metalChar is a burnt one.
+   */
+  car(cx, cz, yaw = 0, paint = this.m.metalChar, look = null) {
     const alongX = Math.abs(Math.sin(yaw)) < 0.5;
     const L = 4.3, Wd = 1.8;
     const w = alongX ? L : Wd, d = alongX ? Wd : L;
     // collider covers body and cabin
-    const c = this.box(cx, 0.45, cz, w, 0.9, d, paint, { kind: 'metal' });
-    // cabin
-    const cabW = alongX ? 2.1 : 1.6, cabD = alongX ? 1.6 : 2.1;
-    this.box(cx + (alongX ? -0.2 : 0), 1.1, cz + (alongX ? 0 : -0.2), cabW, 0.55, cabD, paint, { collide: false });
-    this.box(cx + (alongX ? -0.2 : 0), 1.1, cz + (alongX ? 0 : -0.2), cabW + 0.02, 0.4, cabD + 0.02, this.m.window, { collide: false });
-    // wheels
-    for (const sx of [-1.4, 1.4]) {
-      for (const sz of [-0.9, 0.9]) {
-        const wx = cx + (alongX ? sx : sz), wz = cz + (alongX ? sz : sx);
-        const g = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 14);
-        g.rotateX(Math.PI / 2);
-        if (!alongX) g.rotateY(Math.PI / 2);
-        g.translate(wx, 0.3, wz);
-        this._addGeo(this.m.rubber, this._uvFix(g));
-      }
-    }
+    const c = makeBox(cx, 0.45, cz, w, 0.9, d, { kind: 'metal' });
+    this.addCollider(c);
+    // the two small objects the cabin of the old box car counted for countVisibleItems
+    if (this.items) for (let k = 0; k < 2; k++) this.items.push(cx + (alongX ? -0.2 : 0), 1.1, cz + (alongX ? 0 : -0.2));
+    this._parked(cx, cz, alongX, paint, look);
     this.fireSpots.push({ x: cx, z: cz });
     return c;
   }
 
-  /** A car left under a tarpaulin. Without the scan it is one more wreck. */
-  coveredCar(cx, cz, yaw = 0, paint = this.m.metalChar) {
+  /** A car left under a tarpaulin: the same collider, a model of the set with a tarpaulin over its back half (no scan). */
+  coveredCar(cx, cz, yaw = 0, paint = this.m.metalChar, look = null) {
     const alongX = Math.abs(Math.sin(yaw)) < 0.5;
-    if (!this.scan('covered_car', cx, cz, alongX ? 0 : Math.PI / 2)) return this.car(cx, cz, yaw, paint);
     const c = makeBox(cx, 0.45, cz, alongX ? 4.3 : 1.8, 0.9, alongX ? 1.8 : 4.3, { kind: 'metal' });
     this.addCollider(c);
+    this._parked(cx, cz, alongX, paint, { tarp: 1 + (Math.round(Math.abs(cx * 3 + cz * 7)) % 4), state: 'parked', ...(look || {}) });
     return c;
+  }
+
+  /** The model on a street spot of 4.3 x 1.8 (car, coveredCar): from look, or picked by the spot's seed. */
+  _parked(cx, cz, alongX, mat, look) {
+    const o = look || {};
+    const seed = Math.round(cx * 10) * 31 + Math.round(cz * 10) * 17;
+    const place = placeOf(4.3, 1.8);
+    const id = o.id || pickVehicle(['car', 'sport'], place.w, place.d, seed);
+    const name = Object.keys(this.m).find((k) => this.m[k] === mat);
+    const state = o.state || (mat === this.m.metalChar ? 'burnt' : 'parked');
+    const yaw = (alongX ? 0 : Math.PI / 2) + (o.flip ? Math.PI : 0);
+    const want = PAINT_BY_MAT[name], v = vehicleOf(id);
+    const paint = o.paint || (v.look.paints.includes(want) ? want : undefined);
+    buildVehicle(this, id, { x: cx, z: cz, yaw, state, paint, tarp: o.tarp, seed });
+  }
+
+  /**
+   * The parking places of wave 15 (PARKING): each model with colliders of its own (parkedBoxes). Called after
+   * every call of world.rng; a place that is not free (or touches a loop) stays empty.
+   */
+  _parking() {
+    const margin = ROUTE_KEEP_CLEAR + 0.5;
+    for (const p of PARKING) {
+      const v = vehicleOf(p.id);
+      const q = ((Math.round(p.yaw / (Math.PI / 2)) % 4) + 4) % 4, co = [1, 0, -1, 0][q], si = [0, 1, 0, -1][q];
+      const along = q % 2 === 0, sx = along ? v.length : v.width, sz = along ? v.width : v.length;
+      if (!this.fits(p.x, p.z, sx, sz, 0.2)) continue;
+      let clear = true;
+      for (let u = -0.5; u <= 0.5 && clear; u += 0.125) {
+        for (const [dx, dz] of [[u * sx, -sz / 2], [u * sx, sz / 2], [-sx / 2, u * sz], [sx / 2, u * sz]]) {
+          if (onRoute(p.x + dx, p.z + dz, margin, this.routes)) { clear = false; break; }
+        }
+      }
+      if (!clear) continue;
+      for (const [x0, x1, y0, y1, hw] of parkedBoxes(v)) {
+        // the box in the model's frame turned like the model (x' = x cos + z sin, z' = -x sin + z cos)
+        const lx = (x0 + x1) / 2, lw = x1 - x0;
+        const cx = p.x + lx * co, cz = p.z - lx * si;
+        this.addCollider(makeBox(cx, (y0 + y1) / 2, cz, along ? lw : hw * 2, y1 - y0, along ? hw * 2 : lw, { kind: 'metal' }));
+      }
+      buildVehicle(this, p.id, { x: p.x, z: p.z, yaw: p.yaw, paint: p.paint });
+    }
   }
 
   _uvFix(g) {
@@ -1100,14 +1173,15 @@ export class World {
     this.sandbags(4.5, 8.4, 2.6, false);
     this.sandbags(-12, -2.6, 3, true);
     this.sandbags(12, 2.6, 3, true);
-    this.car(-9, 3.4, 0, m.metalChar);
-    this.coveredCar(9.5, -3.2, 0, m.metalGray);
-    this.car(2.6, 12.5, Math.PI / 2, m.metalChar);
-    this.car(-3.2, -12, Math.PI / 2, m.metalRed);
-    this.coveredCar(0, 24, Math.PI / 2, m.metalChar);
-    this.coveredCar(-20, -4, 0, m.metalGray);
-    this.car(20, 4.2, 0, m.metalChar);
-    this.car(3.4, -30, Math.PI / 2, m.metalYellow);
+    // wave 15: the same spots and colliders, drawn as models of the set (fires burn on three of them)
+    this.car(-9, 3.4, 0, m.metalChar, { id: 'model3', state: 'burnt' });
+    this.coveredCar(9.5, -3.2, 0, m.metalGray, { id: 'modelY', paint: 'white', flip: true });
+    this.car(2.6, 12.5, Math.PI / 2, m.metalChar, { id: 'roadster17', state: 'parked', paint: 'red', flip: true });
+    this.car(-3.2, -12, Math.PI / 2, m.metalRed, { id: 'modelY', state: 'burnt' });
+    this.coveredCar(0, 24, Math.PI / 2, m.metalChar, { id: 'roadster08', paint: 'green' });
+    this.coveredCar(-20, -4, 0, m.metalGray, { id: 'cyber3', paint: 'steel' });
+    this.car(20, 4.2, 0, m.metalChar, { id: 'model3', state: 'burnt', flip: true });
+    this.car(3.4, -30, Math.PI / 2, m.metalYellow, { id: 'roadster26', paint: 'white', flip: true });
     this.crater(-2, 0, 3.2);
     this.crater(15, -2, 2.4);
     this.crater(-1.5, 21, 2.0);
@@ -1158,6 +1232,8 @@ export class World {
     addInteriors(this);
     addDetails(this);
     this.skyline();
+    // wave 15: the new parking places, after every call of world.rng (they use none)
+    this._parking();
     this._flush();
 
     this._places();

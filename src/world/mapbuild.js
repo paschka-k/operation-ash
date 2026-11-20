@@ -24,6 +24,8 @@ import { MAP_IDS } from '../core/maps.js';
 import { atmosphereFor } from '../core/atmosphere.js';
 import { pbrMaterial, themeTextureSet } from '../render/materials.js';
 import { addInteriors, addDetails, decorMaterials } from './details.js';
+import { buildVehicle } from './fleet.js';
+import { pickVehicle, pickPaint, placeOf, vehicleOf } from '../core/fleet.js';
 
 const QUARTER = Math.PI / 2;
 const TAU = Math.PI * 2;
@@ -293,15 +295,38 @@ function oquad(w, p, cx, cy, cz, sw, sh, mat, ry = 0, rx = 0) {
   place(w, p, g, mat);
 }
 
-function wheels(w, p, list, r, width) {
-  for (const [lx, lz] of list) ocyl(w, p, lx, r, lz, r, r, width, w.m.rubber, 12, 'z');
+/** The paint of a parked model by the look of its piece (char: burnt). */
+const PIECE_PAINT = { metalGray: 'silver', metalRed: 'red', metalYellow: 'white' };
+
+/**
+ * A car or bus piece drawn as a model of the set (wave 15, world/fleet.js) that fits its place: the piece's
+ * collider and the free margin layouts keep round it (core/fleet placeOf). The nose turns by the piece's
+ * yaw, half of them the other way. Burnt where a fire of the layout burns on it or its look is char. Returns
+ * false when no model fits (the caller draws the shape).
+ */
+function fleetPiece(w, p, slot, i) {
+  const place = placeOf(p.w, p.d);
+  const seed = Math.round(p.x * 10) * 31 + Math.round(p.z * 10) * 17 + i;
+  const id = pickVehicle(slot, place.w, place.d, seed);
+  if (!id) return false;
+  const fire = (w.layout.fires || []).some((f) => Math.abs(f.x - p.x) < 0.3 && Math.abs(f.z - p.z) < 0.3);
+  const burnt = fire || p.kind === 'metalChar';
+  const yaw = quarterOf(p.yaw) * QUARTER + (seed % 2 ? Math.PI : 0);
+  const tarp = !burnt && slot !== 'bus' && i % 3 === 0 ? 1 + (Math.abs(seed) % 4) : 0;
+  const v = vehicleOf(id), want = PIECE_PAINT[p.kind];
+  // the piece's colour when the model comes in it, else one of the model's own
+  const paint = burnt ? undefined : v.look.paints.includes(want) ? want : pickPaint(id, seed);
+  buildVehicle(w, id, { x: p.x, y: p.y || 0, z: p.z, yaw, state: burnt ? 'burnt' : 'parked', paint, tarp, seed });
+  if (!v.look.open) snowCap(w, p, 0, v.height - 0.02, 0, v.length * (slot === 'bus' ? 0.9 : 0.3), v.width * 0.55);
+  return true;
 }
 
 /**
- * Photoscans baked into a generated map, at most as many as the block bakes: a scanned car or barrier is
+ * Photoscans baked into a generated map, at most as many as the block bakes: a scanned barrier is
  * thousands of triangles in the colour, occlusion and every shadow pass. The rest are drawn from boxes.
+ * (Cars are models of world/fleet.js since wave 15, the scan of a covered car is not used.)
  */
-const SCAN_CAP = { covered_car: 3, concrete_barrier: 4 };
+const SCAN_CAP = { concrete_barrier: 4 };
 function useScan(w, id) {
   const used = (w.scansUsed = w.scansUsed || {});
   if ((used[id] || 0) >= (SCAN_CAP[id] ?? 0)) return false;
@@ -397,29 +422,12 @@ export const PIECE_DRAW = {
     snowCap(w, p, 0, H, 0, W - 0.1, D - 0.1);
   },
   car(w, p, mat, i) {
-    // every third car is left under a tarpaulin when the scan is there (as coveredCar on the block)
-    if (i % 3 === 0 && useScan(w, 'covered_car') && w.scan('covered_car', p.x, p.z, quarterOf(p.yaw) % 2 ? QUARTER : 0)) return;
-    const L = p.w, D = p.d, dark = shade(w, mat, 0.6);
-    localBox(w, p, 0, 0.28, 0, L, 0.5, D, mat);                              // body
-    localBox(w, p, 1.35, 0.78, 0, 1.6, 0.12, D, mat);                        // bonnet
-    localBox(w, p, -1.55, 0.78, 0, 1.2, 0.12, D, mat);                       // boot
-    localBox(w, p, -0.15, 0.78, 0, 2.1, 0.58, D - 0.12, mat);                // cabin
-    localBox(w, p, -0.15, 0.93, 0, 2.12, 0.34, D - 0.1, w.m.window);         // glass
-    for (const sx of [-1, 1]) localBox(w, p, sx * (L / 2 - 0.05), 0.24, 0, 0.1, 0.2, D - 0.1, w.m.rubber);   // bumpers
-    localBox(w, p, 0, 0.18, 0, L - 0.5, 0.12, D - 0.3, dark);                // sills
-    wheels(w, p, [[-1.35, -(D / 2 - 0.15)], [1.35, -(D / 2 - 0.15)], [-1.35, D / 2 - 0.15], [1.35, D / 2 - 0.15]], 0.33, 0.22);
-    snowCap(w, p, -0.15, 1.36, 0, 1.9, D - 0.25);
-    snowCap(w, p, 1.35, 0.9, 0, 1.3, D - 0.25);
+    // wave 15: a model of the set that fits the place (world/fleet.js); burnt where a fire burns on it or its
+    // paint is char, every third of the others under a tarpaulin (as the block's covered cars)
+    if (!fleetPiece(w, p, ['car', 'sport'], i)) drawPieceShape(w, p, mat);
   },
-  bus(w, p, mat) {
-    const W = p.w, H = p.h, D = p.d;
-    localBox(w, p, 0, 0.35, 0, W - 0.02, H - 0.4, D - 0.02, mat);
-    localBox(w, p, 0, H - 1.3, 0, W, 0.85, D, w.m.window);
-    localBox(w, p, 0, H - 0.05, 0, W - 0.3, 0.05, D - 0.2, shade(w, mat, 0.8));
-    localBox(w, p, W / 2 - 0.15, 1.0, 0, 0.3, 1.2, D - 0.3, w.m.window);
-    const ax = W / 2 - 2;
-    wheels(w, p, [[-ax, -D / 2 + 0.25], [ax, -D / 2 + 0.25], [-ax, D / 2 - 0.25], [ax, D / 2 - 0.25]], 0.48, 0.3);
-    snowCap(w, p, 0, H, 0, W - 0.4, D - 0.3);
+  bus(w, p, mat, i) {
+    if (!fleetPiece(w, p, 'bus', i)) drawPieceShape(w, p, mat);
   },
   jersey(w, p, mat) {
     if (useScan(w, 'concrete_barrier') && w.scan('concrete_barrier', p.x, p.z, quarterOf(p.yaw) % 2 === 0 ? 0 : QUARTER)) return;

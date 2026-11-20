@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { makeBox, raycast } from '../core/collision.js';
+import { buildVehicle } from './fleet.js';
 
 const TAU = Math.PI * 2;
 
@@ -262,21 +263,13 @@ export function addBigProps(w) {
     });
   }
 
-  // a wrecked bus across the north end of the cross street
+  // a bus left across the north end of the cross street: the collider of always, drawn as the long
+  // van of the set (wave 15, world/fleet.js), its nose to the south
   tryAt(2.5, -38.5, 3.0, 11, () => {
     const x = 2.5, z = -38.5;
-    w.box(x, 1.55, z, 2.6, 2.3, 10.4, dm.busYellow, { kind: 'metal' });
-    w.box(x, 0.45, z, 2.55, 0.5, 10.4, m.metalChar, { collide: false });
-    for (const sx of [-1.31, 1.31]) {
-      w.box(x + sx, 1.95, z, 0.04, 0.75, 9.4, m.window, { collide: false });
-      for (const wz of [-3.4, 3.4]) {
-        const g = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 16);
-        g.rotateZ(Math.PI / 2); g.translate(x + sx * 0.96, 0.5, z + wz);
-        w._addGeo(m.rubber, w._uvFix(g));
-      }
-    }
-    w.box(x, 1.95, z + 5.21, 2.3, 0.9, 0.04, m.window, { collide: false });
-    w.box(x, 2.78, z, 2.4, 0.08, 10.2, m.metalChar, { collide: false, rx: 0.02 });
+    w.addCollider(makeBox(x, 1.55, z, 2.6, 2.3, 10.4, { kind: 'metal' }));
+    if (w.items) w.items.push(x, 1.95, z + 5.21);   // the windscreen the old box bus counted
+    buildVehicle(w, 'cyberbus', { x, z, yaw: -Math.PI / 2, paint: 'matte' });
     w.fireSpots.push({ x, z });
   });
 
