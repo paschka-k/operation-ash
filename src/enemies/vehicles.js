@@ -62,6 +62,18 @@ const C = {
   blood: { color: 0x7e1610, metal: 0.25, rough: 0.42 },
   plate: { color: 0x4d5054, metal: 0.8, rough: 0.52 },
   bolt: { color: 0xa0a3a8, metal: 1, rough: 0.35 },
+  seam: { color: 0x0b0b0c, metal: 0, rough: 0.92 },
+  treadDark: { color: 0x090909, metal: 0, rough: 1 },
+  sidewall: { color: 0x2c2c2e, metal: 0, rough: 0.8 },
+  cable: { color: 0x0e0e0f, metal: 0, rough: 0.7 },
+  braided: { color: 0x3a3d42, metal: 0.6, rough: 0.5 },
+  core: { color: 0x2a2b2e, metal: 0.2, rough: 0.5 },
+  ivory: { color: 0xd9d4c4, metal: 0, rough: 0.4 },
+  decal: { color: 0xe2dac6, metal: 0, rough: 0.6 },
+  veneer: { color: 0x5b3e22, metal: 0, rough: 0.8 },
+  reflector: { color: 0xc41a1a, metal: 0.2, rough: 0.2, glow: 0.35 },
+  lensAmber: { color: 0xff9a22, metal: 0, rough: 0.25, glow: 1.1 },
+  scuff: { color: 0x2c2b29, metal: 0, rough: 0.95 },
 };
 
 // A wreck is charred: dark, dull, and its lights are out.
@@ -123,6 +135,18 @@ function about(p, d, angle, then = null) {
     .multiply(new THREE.Matrix4().makeTranslation(-p[0], -p[1], -p[2]));
   return then ? m.multiply(then) : m;
 }
+/** A hex bolt head or nut: a short six-sided cylinder along `axis`. */
+const bolt = (s, part, p, x, y, z, axis = 'x', r = 0.006, len = 0.008, paint = C.bolt) => s.cyl(part, p(paint), r, len, x, y, z, axis, 6);
+/** A thin dark strip laid on a surface: a panel seam. */
+const seam = (s, part, p, w, h, d, x, y, z, rx = 0, ry = 0, rz = 0) => s.box(part, p(C.seam), w, h, d, x, y, z, rx, ry, rz, 0);
+/** A cable or hose through the given points. */
+const hose = (s, part, paint, pts, r = 0.004) => pipe(s, part, paint, pts, r, 5);
+/** A torus clamp round the axis from a to b, at the fraction t along it. */
+function ring(s, part, paint, a, b, t, r, tube = 0.004, seg = 14) {
+  const A = V3(a), B = V3(b), d = B.clone().sub(A).normalize();
+  const m = new THREE.Matrix4().compose(A.clone().lerp(B, t), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), d), _s);
+  return s.add(part, new THREE.TorusGeometry(r, tube, 5, seg), paint, m);
+}
 const moveTo = (y, z) => new THREE.Matrix4().makeTranslation(0, y, z);
 
 /**
@@ -132,12 +156,37 @@ const moveTo = (y, z) => new THREE.Matrix4().makeTranslation(0, y, z);
 function wheel(s, part, p, o) {
   const { R, rim, width } = o, hw = width / 2, c = Math.min(hw * 0.75, (R - rim) * 0.5);
   const ox = o.x || 0, shift = new THREE.Matrix4().makeTranslation(ox, 0, 0);
-  spun(s, part, p(o.tyre || C.tyre), [
-    [-hw * 0.8, rim - 0.004], [-hw, rim + (R - rim) * 0.3], [-hw, R - c], [-hw + c * 0.3, R - c * 0.3], [-hw + c, R],
-    [hw - c, R], [hw - c * 0.3, R - c * 0.3], [hw, R - c], [hw, rim + (R - rim) * 0.3], [hw * 0.8, rim - 0.004],
-  ], 30, false, shift);
+  // the tyre: sidewall, shoulder and crown, with circumferential grooves cut into the crown when asked
+  const prof = [[-hw * 0.8, rim - 0.004], [-hw, rim + (R - rim) * 0.3], [-hw, R - c], [-hw + c * 0.3, R - c * 0.3], [-hw + c, R]];
+  const grooves = [];
+  if (o.grooves) {
+    const span = hw - c, step = (2 * span) / o.grooves, gw = step * 0.2, gd = Math.min(0.006, (R - rim) * 0.1);
+    for (let i = 0; i < o.grooves; i++) {
+      const gx = -span + step * (i + 0.5);
+      prof.push([gx - gw, R], [gx - gw * 0.5, R - gd], [gx + gw * 0.5, R - gd], [gx + gw, R]);
+      grooves.push([gx, gw * 0.45, R - gd + 0.0007]);
+    }
+  }
+  prof.push([hw - c, R], [hw - c * 0.3, R - c * 0.3], [hw, R - c], [hw, rim + (R - rim) * 0.3], [hw * 0.8, rim - 0.004]);
+  spun(s, part, p(o.tyre || C.tyre), prof, 30, false, shift);
+  for (const [gx, gh, gr] of grooves) spun(s, part, p(C.treadDark), [[gx - gh, gr], [gx + gh, gr]], 24, false, shift);
+  // a printed band on each sidewall
+  if (o.rings) {
+    const r0 = rim + (R - rim) * 0.34, r1 = Math.min(rim + (R - rim) * 0.46, R - c - 0.001);
+    for (const sg of [-1, 1]) {
+      const x0 = sg > 0 ? hw : -(hw + 0.0012), x1 = sg > 0 ? hw + 0.0012 : -hw;
+      spun(s, part, p(C.sidewall), [[x0, r0], [x0, r1], [x1, r1], [x1, r0], [x0, r0]], 30, true, shift);
+    }
+  }
   const rw = hw * 0.84, rin = rim - Math.max(0.012, (R - rim) * 0.25);
   spun(s, part, p(o.rimPaint || C.rim), [[-rw, rin], [-rw, rim + 0.003], [rw, rim + 0.003], [rw, rin], [-rw, rin]], 30, true, shift);
+  // the rim lips, a little proud of the rim
+  if (o.lips) {
+    for (const sg of [-1, 1]) {
+      const x0 = sg > 0 ? rw - 0.001 : -(rw + 0.003), x1 = sg > 0 ? rw + 0.003 : -(rw - 0.001);
+      spun(s, part, p(o.lipPaint || o.rimPaint || C.rim), [[x0, rim - 0.006], [x0, rim + 0.005], [x1, rim + 0.005], [x1, rim - 0.006], [x0, rim - 0.006]], 30, true, shift);
+    }
+  }
   const hubR = o.hubR || 0.035, hubW = o.hubW || hw * 0.7;
   spun(s, part, p(o.hubPaint || C.alu), [[-hubW, 1e-4], [-hubW, hubR], [hubW, hubR], [hubW, 1e-4]], 16, true, shift);
   if (o.spokes) {
@@ -145,6 +194,8 @@ function wheel(s, part, p, o) {
       const a = (i / o.spokes) * Math.PI * 2, side = i % 2 ? 1 : -1, b = a + side * 0.22;
       rod(s, part, p(o.spokePaint || C.steel), [ox + side * hubW * 0.8, Math.cos(a) * hubR * 0.8, Math.sin(a) * hubR * 0.8],
         [ox + side * rw * 0.25, Math.cos(b) * rin, Math.sin(b) * rin], 0.0032, 4);
+      // the nipple at the rim end of the spoke
+      s.box(part, p(C.alu), 0.006, 0.012, 0.006, ox + side * rw * 0.25, Math.cos(b) * (rin + 0.003), Math.sin(b) * (rin + 0.003), b, 0, 0, 0);
     }
   }
   if (o.cast) {
@@ -155,11 +206,42 @@ function wheel(s, part, p, o) {
       s.add(part, new THREE.BoxGeometry(o.castW || hw * 0.6, len, o.castT || 0.03), p(o.castPaint || o.rimPaint || C.rim), m);
     }
   }
-  if (o.disc) {
-    s.cyl(part, p(C.steel), o.disc, 0.005, ox + hw * 0.62, 0, 0, 'x', 24);
-    s.cyl(part, p(C.black), o.disc * 0.55, 0.007, ox + hw * 0.62, 0, 0, 'x', 12);
+  // lug nuts and a centre cap on each face of the hub
+  if (o.lugs) {
+    const lr = hubR * 0.62, nr = o.lugR || 0.0065;
+    for (const sg of [-1, 1]) {
+      for (let i = 0; i < o.lugs; i++) {
+        const a = ((i + 0.5) / o.lugs) * Math.PI * 2;
+        s.cyl(part, p(C.bolt), nr, 0.007, ox + sg * (hubW + 0.0035), Math.cos(a) * lr, Math.sin(a) * lr, 'x', 6);
+      }
+      s.cyl(part, p(C.chrome), hubR * 0.4, 0.008, ox + sg * (hubW + 0.004), 0, 0, 'x', 14);
+    }
   }
-  if (o.sprocket) s.cyl(part, p(C.chain), o.sprocket, 0.006, ox + hw * 0.7, 0, 0, 'x', 20);
+  // the brake disc: drilled, with its carrier bolts; on one side or both, flush with the wheel or outside it
+  if (o.disc) {
+    const sides = o.discSide === 0 ? [-1, 1] : [o.discSide || 1], d = o.disc;
+    for (const sg of sides) {
+      const dx = ox + sg * (o.discOut ? hubW + 0.0035 : hw * 0.62);
+      s.cyl(part, p(C.steel), d, 0.005, dx, 0, 0, 'x', 24);
+      s.cyl(part, p(C.black), d * 0.55, 0.007, dx, 0, 0, 'x', 12);
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        s.cyl(part, p(C.black), d * 0.04, 0.0062, dx, Math.cos(a) * d * 0.78, Math.sin(a) * d * 0.78, 'x', 6);
+      }
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + 0.3;
+        s.cyl(part, p(C.bolt), 0.0045, 0.009, dx, Math.cos(a) * d * 0.35, Math.sin(a) * d * 0.35, 'x', 6);
+      }
+    }
+  }
+  if (o.sprocket) {
+    const sx = ox + hw * 0.7;
+    s.cyl(part, p(C.chain), o.sprocket, 0.006, sx, 0, 0, 'x', 20);
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      s.box(part, p(C.chain), 0.008, 0.012, 0.012, sx, Math.cos(a) * (o.sprocket + 0.004), Math.sin(a) * (o.sprocket + 0.004), a, 0, 0, 0);
+    }
+  }
   if (o.knobs) {
     for (let i = 0; i < o.knobs; i++) {
       for (const row of [-1, 1]) {
@@ -169,6 +251,12 @@ function wheel(s, part, p, o) {
       }
     }
   }
+  // the valve stem, inside the rim
+  if (o.valve) {
+    const av = 2.2, x = ox + hw * 0.5;
+    rod(s, part, p(C.alu), [x, Math.cos(av) * (rim - 0.002), Math.sin(av) * (rim - 0.002)], [x, Math.cos(av) * (rim - 0.024), Math.sin(av) * (rim - 0.024)], 0.003, 5);
+    rod(s, part, p(C.black), [x, Math.cos(av) * (rim - 0.024), Math.sin(av) * (rim - 0.024)], [x, Math.cos(av) * (rim - 0.03), Math.sin(av) * (rim - 0.03)], 0.0036, 5);
+  }
 }
 
 // ------------------------------------------------------------- the scooter
@@ -177,8 +265,8 @@ function wheel(s, part, p, o) {
 function scooter(s, p, wreck) {
   const B = 'body', F = 'fork', T = 'stem';
   const R = 0.1, front = [0.1, 0.455], rear = [0.1, -0.43];
-  wheel(s, 'wheelF', p, { R, rim: 0.066, width: 0.055, hubR: 0.028, cast: 5, castW: 0.026, castT: 0.018, rimPaint: C.black });
-  wheel(s, 'wheelR', p, { R, rim: 0.066, width: 0.058, hubR: 0.056, hubW: 0.026, hubPaint: C.alu, rimPaint: C.black });
+  wheel(s, 'wheelF', p, { R, rim: 0.066, width: 0.055, hubR: 0.028, cast: 5, castW: 0.026, castT: 0.018, rimPaint: C.black, grooves: 3, valve: true, lugs: 5, lugR: 0.0035 });
+  wheel(s, 'wheelR', p, { R, rim: 0.066, width: 0.058, hubR: 0.056, hubW: 0.026, hubPaint: C.alu, rimPaint: C.black, grooves: 3, valve: true, lugs: 6, lugR: 0.0035, disc: 0.05, discSide: -1, discOut: true });
   // deck, grip mat, battery underneath, reflective strips
   s.prism(B, p(C.olive), [[-0.345, 0.11], [-0.33, 0.152], [0.27, 0.152], [0.3, 0.13], [0.3, 0.096], [0.27, 0.075], [-0.3, 0.075], [-0.345, 0.095]], 0.205, { bevel: 0.012 });
   s.box(B, p(C.grip), 0.172, 0.008, 0.53, 0, 0.156, -0.03, 0, 0, 0, 0.003);
@@ -214,6 +302,43 @@ function scooter(s, p, wreck) {
   s.box(T, p(C.black), 0.075, 0.022, 0.055, 0, 1.135, 0.352, -0.2, 0, 0, 0.006);
   s.box(T, p(C.screen), 0.055, 0.003, 0.034, 0, 1.147, 0.354, -0.2, 0, 0, 0);
   s.box(T, p(C.black), 0.025, 0.03, 0.03, -0.155, 1.12, 0.37, 0, 0, 0, 0.005);
+  // ---- detail: screws, seams, stays, brake and cables, lamp rims, bell
+  const stemAt = (t, dx = 0, dz = 0) => { const q = lerp3(s0, s1, t); return [q[0] + dx, q[1], q[2] + dz]; };
+  for (const x of [-1, 1]) {
+    for (const [z, y] of [[-0.36, 0.108], [-0.41, 0.1]]) bolt(s, B, p, x * 0.0505, y, z, 'x', 0.0045, 0.006);
+    for (const z of [-0.3, 0.2]) bolt(s, B, p, x * 0.094, 0.1545, z, 'y', 0.005, 0.005);
+    seam(s, B, p, 0.003, 0.0015, 0.55, x * 0.088, 0.1525, -0.03);
+    rod(s, B, p(C.frame), [x * 0.04, 0.221, -0.4], [x * 0.042, 0.125, -0.31], 0.005, 5);
+    bolt(s, F, p, x * 0.0445, 0.2, 0.447, 'x', 0.0055, 0.006);
+    bolt(s, F, p, x * 0.044, 0.262, 0.438, 'y', 0.007, 0.006);
+    bolt(s, F, p, x * 0.043, 0.215, 0.39, 'x', 0.009, 0.014);
+    s.cyl(T, p(C.amber), 0.014, 0.005, x * 0.2475, 1.115, 0.345, 'x', 10);
+  }
+  for (const z of [-0.12, 0.06]) seam(s, B, p, 0.154, 0.033, 0.004, 0, 0.068, z);
+  s.box(B, p(C.screen), 0.012, 0.006, 0.003, 0.04, 0.07, 0.1915, 0, 0, 0, 0);
+  s.box(B, p(C.rubber), 0.02, 0.012, 0.03, 0.098, 0.072, -0.245, 0, 0, 0, 0);
+  s.box(B, p(C.tail), 0.014, 0.012, 0.01, -0.05, 0.098, -0.566, 0, 0, 0, 0);
+  s.box(B, p(C.tail), 0.014, 0.012, 0.01, 0.05, 0.098, -0.566, 0, 0, 0, 0);
+  s.box(B, p(C.black), 0.07, 0.03, 0.02, 0, 0.098, -0.548, 0, 0, 0, 0);
+  s.box(B, p(C.reflector), 0.03, 0.014, 0.004, 0, 0.13, -0.5, -0.5, 0, 0, 0);
+  // the rear disc brake: the caliper on the left plate, its cable run to the bar along the stem
+  s.box(B, p(C.gunmetal), 0.016, 0.03, 0.03, -0.0325, 0.14, -0.43, 0, 0, 0, 0);
+  bolt(s, B, p, -0.0415, 0.145, -0.43, 'x', 0.005, 0.004);
+  hose(s, B, p(C.cable), [[-0.027, 0.25, 0.43], [-0.05, 0.19, 0.37], [-0.093, 0.158, 0.26], [-0.093, 0.158, -0.32], [-0.05, 0.16, -0.42], [-0.032, 0.15, -0.43]], 0.0028);
+  hose(s, T, p(C.cable), [[-0.19, 1.11, 0.385], [-0.08, 1.118, 0.372], stemAt(0.97, -0.027), stemAt(0.62, -0.027), stemAt(0.2, -0.027), [-0.027, 0.25, 0.43]], 0.0028);
+  // stem collars and clamp, the lamp rim and bracket, the bell
+  rod(s, T, p(C.chrome), stemAt(0.42), stemAt(0.455), 0.027, 12);
+  bolt(s, T, p, 0.032, stemAt(0.44)[1], stemAt(0.44)[2], 'x', 0.005, 0.01);
+  rod(s, T, p(C.frame), stemAt(0), stemAt(0.04), 0.03, 12);
+  s.add(T, new THREE.TorusGeometry(0.031, 0.0035, 5, 16), p(C.chrome), at(0, lamp[1], lamp[2] + 0.0631));
+  s.box(T, p(C.black), 0.03, 0.026, 0.036, 0, lamp[1] - 0.005, lamp[2] - 0.004, 0, 0, 0, 0);
+  s.cyl(T, p(C.chrome), 0.015, 0.012, -0.1, 1.131, 0.345, 'y', 12);
+  s.cyl(T, p(C.chrome), 0.008, 0.006, -0.1, 1.14, 0.345, 'y', 8);
+  if (wreck) {
+    // the deck edge lifted, a cable torn loose
+    s.box(B, p(C.olive), 0.09, 0.008, 0.18, 0.045, 0.16, 0.05, 0, 0, 0.22, 0);
+    hose(s, B, p(C.cable), [[0.03, 0.2, 0.3], [0.09, 0.14, 0.38], [0.12, 0.09, 0.33]], 0.0028);
+  }
   const twist = about([0, 0.25, 0.43], [0, 1, -0.09], 0.55);
   return [
     { name: B }, { name: F, m: wreck ? twist : null },
@@ -264,7 +389,7 @@ function deckSlab(pts, y, t, rise, scale = 1) {
 function skate(s, p, wreck) {
   const R = 0.027, wz = 0.235, y = 0.11, t = 0.012, rise = 0.012;
   for (const name of ['wheelsF', 'wheelsR']) {
-    for (const x of [-1, 1]) wheel(s, name, p, { x: x * 0.099, R, rim: 0.012, width: 0.034, hubR: 0.011, hubW: 0.012, tyre: C.urethane, rimPaint: C.urethane, hubPaint: C.steel });
+    for (const x of [-1, 1]) wheel(s, name, p, { x: x * 0.099, R, rim: 0.012, width: 0.034, hubR: 0.011, hubW: 0.012, tyre: C.urethane, rimPaint: C.core, hubPaint: C.steel, rings: true });
   }
   const halves = wreck ? [['deckF', 0.012, Infinity], ['deckR', -Infinity, 0.012]] : [['deck', -Infinity, Infinity]];
   for (const [name, z0, z1] of halves) {
@@ -272,6 +397,13 @@ function skate(s, p, wreck) {
     s.add(name, deckSlab(pts, y, t, rise), p(C.maple));
     s.add(name, deckSlab(pts, y + 0.0016, 0.0016, rise, 0.985), p(C.grip));
     s.add(name, deckSlab(pts, y - t + 0.0004, 0.0009, rise, 0.97), p(C.graphic));
+    s.add(name, deckSlab(pts, y - t - 0.0005, 0.0004, rise, 0.8), p(C.decal));
+    // the plies of the maple show on the edge
+    for (const k of [0.33, 0.66]) s.add(name, deckSlab(pts, y - t * k + 0.0004, 0.0008, rise, 1.004), p(C.veneer));
+    // worn patches on the grip tape
+    for (const [gx, gz, gw, gl] of [[-0.03, 0.2, 0.07, 0.1], [0.04, -0.19, 0.08, 0.12], [-0.02, 0.0, 0.05, 0.16]]) {
+      if (gz > z0 - 0.05 && gz < z1 + 0.05) s.box(name, p(C.scuff), gw, 0.0008, gl, gx, y + 0.0024, gz, 0, 0, 0, 0);
+    }
   }
   // trucks: baseplate, hanger, kingpin bushing, axle
   for (const z of [-wz, wz]) {
@@ -281,6 +413,21 @@ function skate(s, p, wreck) {
     s.box(name, p(C.alu), 0.13, 0.022, 0.026, 0, 0.034, z, 0, 0, 0, 0.005);
     s.cyl(name, p(C.bushing), 0.011, 0.016, 0, 0.07, z - Math.sign(z) * 0.016, 'y', 8);
     s.cyl(name, p(C.steel), 0.0042, 0.236, 0, R, z, 'x', 6);
+    // mounting bolts through the deck, the kingpin and its nut, the lower bushing, axle nuts
+    for (const bx of [-1, 1]) for (const bz of [-1, 1]) bolt(s, name, p, bx * 0.02, y + 0.0042, z + bz * 0.03, 'y', 0.0036, 0.0045);
+    bolt(s, name, p, 0, 0.0865, z - Math.sign(z) * 0.016, 'y', 0.008, 0.008);
+    s.cyl(name, p(C.bushing), 0.0105, 0.012, 0, 0.056, z - Math.sign(z) * 0.016, 'y', 8);
+    s.cyl(name, p(C.steel), 0.0045, 0.03, 0, 0.073, z - Math.sign(z) * 0.016, 'y', 6);
+    s.cyl(name, p(C.alu), 0.009, 0.012, 0, 0.046, z + Math.sign(z) * 0.026, 'x', 8);
+    for (const nx of [-1, 1]) bolt(s, name, p, nx * 0.1215, R, z, 'x', 0.0072, 0.008);
+    for (const hx of [-1, 1]) s.cyl(name, p(C.alu), 0.011, 0.014, hx * 0.052, 0.034, z, 'x', 8);
+  }
+  if (wreck) {
+    // splinters standing out of the break
+    for (const [i, sx] of [-0.09, -0.05, -0.01, 0.03, 0.07, 0.1].entries()) {
+      const up = i % 2 ? 'deckF' : 'deckR', dir = i % 2 ? -1 : 1;
+      s.box(up, p(C.maple), 0.014, 0.008, 0.05 + (i % 3) * 0.015, sx, y - t * 0.5, 0.012 + dir * 0.02, 0.15 * dir, 0.2, 0, 0);
+    }
   }
   if (!wreck) {
     return [{ name: 'deck' }, { name: 'wheelsF', m: moveTo(R, wz), wheel: [R, wz, R] }, { name: 'wheelsR', m: moveTo(R, -wz), wheel: [R, -wz, R] }];
@@ -303,8 +450,8 @@ function skateProxy() {
 function moto(s, p, wreck) {
   const B = 'body', F = 'fork';
   const front = [0.33, 0.68], rear = [0.33, -0.66], R = 0.33;
-  wheel(s, 'wheelF', p, { R, rim: 0.245, width: 0.09, hubR: 0.04, spokes: 18, knobs: 26, disc: 0.12, rimPaint: C.alu });
-  wheel(s, 'wheelR', p, { R, rim: 0.24, width: 0.12, hubR: 0.045, spokes: 18, knobs: 26, sprocket: 0.09, rimPaint: C.alu });
+  wheel(s, 'wheelF', p, { R, rim: 0.245, width: 0.09, hubR: 0.04, spokes: 18, knobs: 26, disc: 0.12, rimPaint: C.alu, rings: true, lips: true, valve: true });
+  wheel(s, 'wheelR', p, { R, rim: 0.24, width: 0.12, hubR: 0.045, spokes: 18, knobs: 26, sprocket: 0.09, rimPaint: C.alu, rings: true, lips: true, valve: true });
   // fork along the steering axis, from the top clamp to the axle
   const top = [0, 0.985, 0.372], axle = [0, ...front], on = (t) => lerp3(top, axle, t);
   for (const x of [-1, 1]) {
@@ -375,6 +522,77 @@ function moto(s, p, wreck) {
     rod(s, B, p(C.frame), [x * 0.03, 0.29, 0.34], [x * 0.145, 0.25, 0.355], 0.012, 6);
   }
   rod(s, B, p(C.frame), [0.09, 0.3, -0.06], [0.11, 0.34, -0.36], 0.01, 6);
+  const q = (pt, x) => [x * 0.075, pt[1], pt[2]];
+  // ---- detail: calipers and lines, cables, lamps, bolts and seams, engine and exhaust fittings
+  // front brake: the caliper behind the disc on the right leg, the line from the lever
+  s.box(F, p(C.gunmetal), 0.03, 0.052, 0.04, 0.03, 0.4, 0.605, 0, 0, 0, 0);
+  bolt(s, F, p, 0.0475, 0.41, 0.605, 'x', 0.006, 0.006);
+  rod(s, F, p(C.alu), [0.03, 0.42, 0.62], [0.078, 0.5, 0.6], 0.008, 6);
+  hose(s, F, p(C.braided), [[0.2, 1.03, 0.36], [0.12, 1.0, 0.36], [0.108, 0.8, 0.47], [0.106, 0.55, 0.59], [0.05, 0.4, 0.62]], 0.0045);
+  hose(s, F, p(C.cable), [[-0.2, 1.03, 0.36], [-0.12, 1.0, 0.36], [-0.1, 0.85, 0.42], [-0.09, 0.55, 0.3], [-0.09, 0.42, 0.12]], 0.0035);
+  hose(s, F, p(C.cable), [[0.3, 1.04, 0.33], [0.18, 1.02, 0.35], [0.1, 0.9, 0.4], [0.03, 0.62, 0.3]], 0.0035);
+  for (const x of [-1, 1]) {
+    // fork seals, dust boots and the lever mount
+    ring(s, F, p(C.rubber), q(on(0.5), x), q(on(0.98), x), 0.0, 0.033, 0.006, 12);
+    s.cyl(F, p(C.black), 0.017, 0.03, x * 0.05, 1.0, 0.37, 'x', 8);
+    bolt(s, F, p, x * 0.075, on(0.97)[1], on(0.97)[2] + 0.005, 'x', 0.007, 0.012);
+    bolt(s, F, p, x * 0.1, 0.33, 0.68, 'x', 0.012, 0.012);
+  }
+  bolt(s, F, p, 0, 1.012, 0.372, 'y', 0.018, 0.015, C.alu);
+  // number plate: bolts, lamp housing, indicators; seams and bolts on the shrouds and panels
+  for (const [dx, dy] of [[-0.08, 0.1], [0.08, 0.1], [-0.08, -0.1], [0.08, -0.1]]) {
+    s.add(F, new THREE.CylinderGeometry(0.0055, 0.0055, 0.007, 6).rotateX(Math.PI / 2), p(C.bolt), plate.clone().multiply(new THREE.Matrix4().makeTranslation(dx, dy, 0.016)));
+  }
+  s.add(F, new THREE.BoxGeometry(0.13, 0.072, 0.014), p(C.black), plate.clone().multiply(new THREE.Matrix4().makeTranslation(0, -0.04, 0.014)));
+  for (const x of [-1, 1]) {
+    s.add(F, new THREE.BoxGeometry(0.03, 0.04, 0.02), p(C.lensAmber), plate.clone().multiply(new THREE.Matrix4().makeTranslation(x * 0.118, 0.07, 0.014)));
+    for (const [z, y] of [[0.3, 0.88], [0.43, 0.82], [0.4, 0.9]]) bolt(s, B, p, x * 0.108, y, z, 'x', 0.007, 0.006);
+    for (const [z, y] of [[0.3, 0.82], [0.46, 0.78]]) bolt(s, B, p, x * 0.147, y, z, 'x', 0.006, 0.005);
+    seam(s, B, p, 0.002, 0.003, 0.22, x * 0.106, 0.915, 0.38, 0.25, 0, 0);
+    seam(s, B, p, 0.002, 0.2, 0.003, x * 0.147, 0.74, 0.37, 0, 0, 0);
+    s.box(B, p(C.lensAmber), 0.035, 0.03, 0.025, x * 0.09, 0.83, -0.985, -0.3, 0, 0, 0);
+    bolt(s, B, p, x * 0.126, 0.69, 0.19, 'x', 0.007, 0.006);
+  }
+  s.prism(B, p(C.seam), [[-0.58, 0.7625], [-0.3, 0.7448], [0, 0.7278], [0.12, 0.7355], [0.12, 0.7325], [0, 0.7248], [-0.3, 0.7418], [-0.58, 0.7595]], 0.005, { x: 0.07, bevel: 0 });
+  s.prism(B, p(C.seam), [[-0.58, 0.7625], [-0.3, 0.7448], [0, 0.7278], [0.12, 0.7355], [0.12, 0.7325], [0, 0.7248], [-0.3, 0.7418], [-0.58, 0.7595]], 0.005, { x: -0.07, bevel: 0 });
+  s.box(B, p(C.black), 0.1, 0.05, 0.015, 0, 0.83, -0.995, -0.3, 0, 0, 0);
+  s.box(B, p(C.reflector), 0.04, 0.02, 0.006, 0, 0.775, -1.0, -0.3, 0, 0, 0);
+  // engine: head bolts, the plug and its wire, bolt rings on both covers, radiator hoses, the dipstick
+  for (const [bx, bz] of [[-0.05, -0.05], [0.05, -0.05], [-0.05, 0.05], [0.05, 0.05]]) {
+    s.add(B, new THREE.CylinderGeometry(0.007, 0.007, 0.012, 6).translate(bx, 0.153, bz), p(C.bolt), cyl);
+  }
+  s.add(B, new THREE.CylinderGeometry(0.008, 0.008, 0.05, 8).translate(0.0, 0.18, 0), p(C.ivory), cyl);
+  s.add(B, new THREE.CylinderGeometry(0.012, 0.012, 0.022, 6).translate(0.0, 0.2, 0), p(C.black), cyl);
+  hose(s, B, p(C.cable), [[0, 0.75, 0.2], [0.03, 0.72, 0.12], [0.07, 0.63, 0.05], [0.09, 0.5, 0.0]], 0.0045);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    bolt(s, B, p, 0.102, 0.36 + Math.cos(a) * 0.065, 0 + Math.sin(a) * 0.065, 'x', 0.0055, 0.006);
+    bolt(s, B, p, -0.102, 0.34 + Math.cos(a) * 0.065, 0 + Math.sin(a) * 0.065, 'x', 0.0055, 0.006);
+  }
+  s.cyl(B, p(C.black), 0.02, 0.02, -0.108, 0.34, 0, 'x', 10);
+  for (const x of [-1, 1]) hose(s, B, p(C.rubber), [[x * 0.22, 0.8, 0.35], [x * 0.15, 0.7, 0.3], [x * 0.05, 0.62, 0.265]], 0.012);
+  // exhaust: flange, clamps round the silencer, a heat shield with its holes, the spark arrestor
+  s.cyl(B, p(C.steel), 0.034, 0.008, -0.03, 0.6, 0.37, 'x', 10);
+  for (const t2 of [0.12, 0.45, 0.85]) ring(s, B, p(C.steel), [-0.15, 0.6, -0.3], [-0.155, 0.73, -0.83], t2, 0.055, 0.0035, 14);
+  s.box(B, p(C.alu), 0.005, 0.05, 0.38, -0.202, 0.69, -0.52, 0.24, 0, 0, 0);
+  for (let i = 0; i < 6; i++) for (const dy of [-0.012, 0.012]) s.cyl(B, p(C.black), 0.0045, 0.008, -0.205, 0.69 + dy + i * 0.0225 * 0.24, -0.66 + i * 0.065, 'x', 6);
+  s.cyl(B, p(C.steel), 0.026, 0.02, -0.155, 0.735, -0.86, 'z', 10);
+  // rear axle and its nuts, chain links, adjuster blocks
+  s.cyl(B, p(C.steel), 0.012, 0.2, 0, rear[0], rear[1], 'x', 8);
+  for (const x of [-1, 1]) {
+    bolt(s, B, p, x * 0.098, rear[0], rear[1], 'x', 0.017, 0.012);
+    s.box(B, p(C.alu), 0.012, 0.03, 0.04, x * 0.088, 0.335, -0.655, 0, 0, 0, 0);
+  }
+  for (let i = 0; i < 20; i++) {
+    const z = -0.04 - i * 0.03;
+    s.box(B, p(i % 2 ? C.steel : C.chain), 0.012, 0.01, 0.018, 0.095, 0.4 + (0.42 - 0.4) * (i / 20), z, 0, 0, 0, 0);
+  }
+  if (wreck) {
+    // crumpled panels and a cable hanging loose
+    s.box(B, p(C.tan), 0.12, 0.02, 0.16, 0.12, 0.93, 0.35, 0.35, 0.2, 0.5, 0);
+    s.box(B, p(C.tan), 0.1, 0.02, 0.14, -0.14, 0.82, 0.3, -0.4, 0.3, -0.5, 0);
+    hose(s, B, p(C.cable), [[0.08, 0.5, 0.0], [0.16, 0.3, 0.02], [0.2, 0.12, 0.05]], 0.0035);
+  }
   const twist = about(top, [0, top[1] - axle[1], top[2] - axle[2]], 0.75);
   return [
     { name: B }, { name: F, m: wreck ? twist : null },
@@ -403,8 +621,8 @@ function motoProxy() {
 function heavyMoto(s, p, wreck) {
   const B = 'body', F = 'fork';
   const front = [0.33, 0.86], rear = [0.34, -0.8];
-  wheel(s, 'wheelF', p, { R: 0.33, rim: 0.225, width: 0.13, hubR: 0.05, cast: 6, castW: 0.04, castT: 0.04, castPaint: C.rimBlack, rimPaint: C.chrome, disc: 0.15 });
-  wheel(s, 'wheelR', p, { R: 0.34, rim: 0.225, width: 0.2, hubR: 0.06, cast: 6, castW: 0.06, castT: 0.045, castPaint: C.rimBlack, rimPaint: C.chrome, sprocket: 0.12 });
+  wheel(s, 'wheelF', p, { R: 0.33, rim: 0.225, width: 0.13, hubR: 0.05, cast: 6, castW: 0.04, castT: 0.04, castPaint: C.rimBlack, rimPaint: C.chrome, disc: 0.15, discSide: 0, grooves: 2, rings: true, lips: true, valve: true, lugs: 6 });
+  wheel(s, 'wheelR', p, { R: 0.34, rim: 0.225, width: 0.2, hubR: 0.06, cast: 6, castW: 0.06, castT: 0.045, castPaint: C.rimBlack, rimPaint: C.chrome, sprocket: 0.12, grooves: 3, rings: true, lips: true, valve: true, lugs: 6, disc: 0.13, discSide: -1 });
   // raked fork: chromed tubes in black sliders
   const top = [0, 1.0, 0.46], axle = [0, ...front], on = (t) => lerp3(top, axle, t);
   for (const x of [-1, 1]) {
@@ -490,6 +708,104 @@ function heavyMoto(s, p, wreck) {
   arcBand(s, B, p(C.gunmetal), rear[1], rear[0], 0.36, 0.38, Math.PI * 0.3, Math.PI * 1.05, 0.25, { n: 14 });
   s.box(B, p(C.tail), 0.12, 0.035, 0.02, 0, 0.6, -1.185, -0.5, 0, 0, 0.006);
   s.box(B, p(C.black), 0.16, 0.1, 0.01, 0, 0.5, -1.17, -0.3, 0, 0, 0.003);
+  // ---- detail: calipers and braided lines, levers and mirrors, lamps, rivets, seams, engine, pipes
+  const lg = (pt, x) => [x * 0.12, pt[1], pt[2]];
+  for (const x of [-1, 1]) {
+    // a caliper on each fork leg behind the disc, its bracket and bleed nipple
+    s.box(F, p(C.chrome), 0.034, 0.06, 0.05, x * 0.042, 0.42, 0.77, 0, 0, 0, 0);
+    s.box(F, p(C.black), 0.036, 0.02, 0.052, x * 0.042, 0.42, 0.77, 0, 0, 0, 0);
+    bolt(s, F, p, x * 0.062, 0.435, 0.77, 'x', 0.007, 0.006);
+    bolt(s, F, p, x * 0.042, 0.456, 0.77, 'y', 0.004, 0.008);
+    rod(s, F, p(C.gunmetal), [x * 0.042, 0.44, 0.76], [x * 0.12, 0.5, 0.75], 0.012, 6);
+    // dust boots on the upper tubes
+    for (let i = 0; i < 5; i++) {
+      const a0 = lg(on(0.08 + i * 0.065), x), a1 = lg(on(0.108 + i * 0.065), x);
+      rod(s, F, p(C.rubber), a0, a1, i % 2 ? 0.04 : 0.044, 12);
+    }
+    bolt(s, F, p, x * 0.17, 0.33, 0.86, 'x', 0.016, 0.014);
+    // levers, the master cylinder
+    rod(s, F, p(C.chrome), [x * 0.22, 1.062, 0.4], [x * 0.31, 1.066, 0.46], 0.007, 6);
+    s.box(F, p(C.gunmetal), 0.05, 0.03, 0.045, x * 0.25, 1.082, 0.41, 0, 0, 0, 0);
+    s.cyl(F, p(C.chrome), 0.011, 0.01, x * 0.25, 1.1, 0.41, 'y', 8);
+    // crash-bar lamps and indicators
+    s.cyl(F, p(C.chrome), 0.04, 0.045, x * 0.37, 0.45, 0.55, 'z', 14);
+    s.add(F, new THREE.CircleGeometry(0.032, 14), p(C.headlight), at(x * 0.37, 0.45, 0.5731));
+    s.box(F, p(C.lensAmber), 0.04, 0.04, 0.045, x * 0.37, 0.3, 0.64, 0, 0, 0, 0);
+    // mirrors, if intact
+    if (!wreck) {
+      rod(s, F, p(C.chrome), [x * 0.36, 1.09, 0.31], [x * 0.42, 1.22, 0.27], 0.006, 6);
+      s.cyl(F, p(C.black), 0.042, 0.014, x * 0.44, 1.24, 0.27, 'z', 12);
+      s.add(F, new THREE.CircleGeometry(0.036, 12), p(C.glass), at(x * 0.44, 1.24, 0.2775));
+    }
+  }
+  hose(s, F, p(C.braided), [[0.27, 1.06, 0.41], [0.2, 1.03, 0.4], [0.185, 0.9, 0.53], [0.185, 0.62, 0.7], [0.15, 0.5, 0.8], [0.06, 0.455, 0.785]], 0.006);
+  hose(s, F, p(C.braided), [[-0.27, 1.06, 0.41], [-0.2, 1.03, 0.4], [-0.185, 0.9, 0.53], [-0.185, 0.62, 0.7], [-0.15, 0.5, 0.8], [-0.06, 0.455, 0.785]], 0.006);
+  // rivets round the fairing edge, inner lamp rims, a seam down the middle
+  for (const [x, y] of [[-0.4, 0.88], [-0.41, 0.95], [-0.33, 1.05], [-0.15, 1.09], [0.15, 1.09], [0.33, 1.05], [0.41, 0.95], [0.4, 0.88]]) {
+    s.cyl(F, p(C.chrome), 0.007, 0.008, x, y, fz + 0.1235, 'z', 6);
+  }
+  for (const x of [-1, 1]) {
+    s.add(F, new THREE.TorusGeometry(0.036, 0.006, 5, 14), p(C.chrome), at(x * 0.11, 0.92, fz + 0.1215));
+    s.add(F, new THREE.CircleGeometry(0.022, 12), p(C.chrome), at(x * 0.11, 0.92, fz + 0.1222));
+  }
+  seam(s, F, p, 0.003, 0.2, 0.004, 0, 0.935, fz + 0.1235);
+  // behind: lamps, saddlebag straps and seams, shocks
+  for (const x of [-1, 1]) {
+    s.box(B, p(C.rubber), 0.158, 0.34, 0.03, x * 0.395, 0.6, -0.6, 0, 0, 0, 0);
+    s.box(B, p(C.chrome), 0.012, 0.04, 0.034, x * 0.474, 0.64, -0.6, 0, 0, 0, 0);
+    seam(s, B, p, 0.158, 0.004, 0.52, x * 0.395, 0.7, -0.72);
+    s.box(B, p(C.lensAmber), 0.05, 0.05, 0.03, x * 0.4, 0.66, -0.995, 0, 0, 0, 0);
+    s.box(B, p(C.reflector), 0.04, 0.025, 0.006, x * 0.4, 0.5, -0.995, 0, 0, 0, 0);
+    rod(s, B, p(C.chrome), [x * 0.19, 0.72, -0.58], [x * 0.17, 0.36, -0.78], 0.016, 10);
+    rod(s, B, p(C.spring), [x * 0.19, 0.69, -0.6], [x * 0.172, 0.46, -0.73], 0.028, 10);
+    bolt(s, B, p, x * 0.19, 0.72, -0.58, 'x', 0.014, 0.014);
+    bolt(s, B, p, x * 0.17, 0.36, -0.78, 'x', 0.014, 0.014);
+  }
+  // seat stitching, tank seam, tail housing
+  s.prism(B, p(C.seam), [[-0.31, 0.7655], [-0.1, 0.7335], [0.05, 0.7385], [0.05, 0.7355], [-0.1, 0.7305], [-0.31, 0.7625]], 0.005, { x: 0.1, bevel: 0 });
+  s.prism(B, p(C.seam), [[-0.31, 0.7655], [-0.1, 0.7335], [0.05, 0.7385], [0.05, 0.7355], [-0.1, 0.7305], [-0.31, 0.7625]], 0.005, { x: -0.1, bevel: 0 });
+  s.prism(B, p(C.seam), [[0.14, 0.9015], [0.38, 0.9915], [0.38, 0.986], [0.14, 0.896]], 0.004, { bevel: 0 });
+  s.box(B, p(C.tail), 0.22, 0.02, 0.016, 0, 0.64, -1.19, -0.5, 0, 0, 0);
+  s.box(B, p(C.black), 0.26, 0.06, 0.02, 0, 0.62, -1.178, -0.5, 0, 0, 0);
+  s.box(B, p(C.reflector), 0.05, 0.03, 0.006, 0, 0.5, -1.19, -0.3, 0, 0, 0);
+  // engine: rocker bolts, pushrods, bolt rings round the primary cover and the air filter
+  for (const [z, tilt] of [[0.13, 0.45], [-0.03, -0.45]]) {
+    const m = new THREE.Matrix4().compose(V3([0, 0.48, z]), new THREE.Quaternion().setFromEuler(new THREE.Euler(tilt, 0, 0)), _s);
+    for (const [bx, bz] of [[-0.05, -0.05], [0.05, -0.05], [-0.05, 0.05], [0.05, 0.05]]) s.add(B, new THREE.CylinderGeometry(0.008, 0.008, 0.012, 6).translate(bx, 0.236, bz), p(C.bolt), m);
+    for (const bz of [-0.1, 0.1]) s.add(B, new THREE.CylinderGeometry(0.006, 0.006, 0.17, 6).translate(0, 0.1, bz), p(C.chrome), m);
+  }
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    bolt(s, B, p, 0.165, 0.33 + Math.cos(a) * 0.105, -0.1 + Math.sin(a) * 0.105, 'x', 0.008, 0.01);
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    bolt(s, B, p, -0.198, 0.6 + Math.cos(a) * 0.082, 0.05 + Math.sin(a) * 0.082, 'x', 0.0065, 0.008);
+  }
+  s.cyl(B, p(C.chrome), 0.02, 0.02, -0.2, 0.6, 0.05, 'x', 10);
+  hose(s, B, p(C.cable), [[-0.18, 0.7, 0.2], [-0.12, 0.74, 0.3], [-0.06, 0.8, 0.4]], 0.004);
+  hose(s, F, p(C.cable), [[-0.28, 1.07, 0.43], [-0.15, 1.0, 0.5], [-0.14, 0.8, 0.5], [-0.13, 0.5, 0.35]], 0.0035);
+  // pipes: clamps and end caps on both mufflers
+  for (const t2 of [0.2, 0.55, 0.9]) {
+    ring(s, B, p(C.chrome), [-0.27, 0.29, -0.35], [-0.275, 0.33, -1.06], t2, 0.054, 0.004, 16);
+    ring(s, B, p(C.chrome), [-0.29, 0.4, -0.35], [-0.295, 0.44, -1.0], t2, 0.05, 0.004, 16);
+  }
+  s.cyl(B, p(C.black), 0.04, 0.012, -0.275, 0.33, -1.066, 'z', 14);
+  s.cyl(B, p(C.black), 0.036, 0.012, -0.295, 0.44, -1.006, 'z', 14);
+  s.cyl(B, p(C.chrome), 0.034, 0.01, -0.06, 0.58, 0.24, 'x', 10);
+  // a kickstand, the rear caliper on the left, the axle
+  rod(s, B, p(C.frame), [-0.11, 0.3, 0.0], [-0.3, 0.12, 0.15], 0.012, 6);
+  s.box(B, p(C.rubber), 0.05, 0.012, 0.06, -0.3, 0.115, 0.15, 0, 0, 0, 0);
+  s.box(B, p(C.chrome), 0.034, 0.06, 0.05, -0.098, 0.42, -0.92, 0, 0, 0, 0);
+  bolt(s, B, p, -0.118, 0.435, -0.92, 'x', 0.007, 0.006);
+  rod(s, B, p(C.gunmetal), [-0.098, 0.42, -0.9], [-0.12, 0.5, -0.78], 0.012, 6);
+  s.cyl(B, p(C.steel), 0.016, 0.34, 0, rear[0], rear[1], 'x', 8);
+  for (const x of [-1, 1]) bolt(s, B, p, x * 0.175, rear[0], rear[1], 'x', 0.02, 0.014);
+  if (wreck) {
+    s.box(B, p(C.gunmetal), 0.16, 0.03, 0.24, 0.12, 0.99, 0.3, 0.3, 0.2, 0.5, 0);
+    s.box(B, p(C.gunmetal), 0.14, 0.03, 0.2, -0.16, 0.8, 0.22, -0.4, 0.3, -0.5, 0);
+    hose(s, B, p(C.cable), [[0.12, 0.5, 0.2], [0.2, 0.3, 0.25], [0.3, 0.12, 0.3]], 0.004);
+  }
   const twist = about(top, [0, top[1] - axle[1], top[2] - axle[2]], -0.6);
   return [
     { name: B }, { name: F, m: wreck ? twist : null },
