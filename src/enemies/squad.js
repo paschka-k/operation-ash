@@ -72,8 +72,9 @@ class Enemy {
     }
     this.separate(dt);
     stepBody(c, dt, g.world.colliders, { gravity: 22, stepHeight: 0.4 });
-    c.x = clamp(c.x, -44.3, 44.3);
-    c.z = clamp(c.z, -44.3, 44.3);
+    const lim = (g.world.half ?? 45) - 0.7;   // 44.3 on every map of wave 15 (one arena)
+    c.x = clamp(c.x, -lim, lim);
+    c.z = clamp(c.z, -lim, lim);
     c.speedNow = Math.hypot(c.vx, c.vz);
     // the pose first: the muzzle of the shot and the laser is read off the gun as it is drawn
     this.animate(dt);

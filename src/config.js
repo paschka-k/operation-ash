@@ -259,6 +259,19 @@ const STR = {
     gpuOnlyOne: 'Игра запущена лаунчером, но в системе одна видеокарта: выбирать не из чего.',
     gpuTabNote: 'Браузер сам выбирает видеокарту, и страница на это повлиять не может. Выбрать её в игре можно, запустив игру лаунчером из папки игры: npm run play или play-windows.cmd. Второй путь: «Параметры → Система → Дисплей → Графика» в Windows.',
 
+    // ---- wave 15: maps-switch
+    mapLoading: 'Загрузка карты: {name}',
+    map_block: 'Квартал',
+    map_port: 'Порт',
+    map_factory: 'Промзона',
+    map_oldtown: 'Старый город',
+    map_railyard: 'Сортировочная станция',
+    map_airfield: 'Аэродром',
+    map_winter: 'Зимний посёлок',
+    map_night: 'Ночной центр',
+    map_desert: 'Пустынная деревня',
+    map_construction: 'Стройка',
+
     // ---- wave 14: main keys on the settings screen, the grenade tip of wave 1
     mainKeys: 'Главные клавиши',
     grenadeTip: '{key} — граната (×{n})',
@@ -457,6 +470,19 @@ const STR = {
     gpuFailed: 'Could not change the graphics card.',
     gpuOnlyOne: 'The game runs through the launcher, but the system has one graphics card: nothing to choose from.',
     gpuTabNote: 'The browser picks the graphics card itself and a page cannot change that. To choose it in the game, start the game with the launcher from the game folder: npm run play or play-windows.cmd. The other way: "Settings → System → Display → Graphics" in Windows.',
+
+    // ---- wave 15: maps-switch
+    mapLoading: 'Loading map: {name}',
+    map_block: 'City Block',
+    map_port: 'Port',
+    map_factory: 'Industrial Zone',
+    map_oldtown: 'Old Town',
+    map_railyard: 'Railyard',
+    map_airfield: 'Airfield',
+    map_winter: 'Winter Village',
+    map_night: 'Downtown at Night',
+    map_desert: 'Desert Village',
+    map_construction: 'Construction Site',
 
     // ---- wave 14: main keys on the settings screen, the grenade tip of wave 1
     mainKeys: 'Main keys',

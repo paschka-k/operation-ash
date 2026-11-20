@@ -133,7 +133,9 @@ export class Director {
         break;
       }
       case 'spawn': {
-        if (isRider(ev.enemyType)) { this.spawnRider(ev); break; }
+        // wave 15: a rider rides the loops of the map being played; on a map without loops he comes on
+        // foot through a spawn point (the same core, one kill as always), so his wave still ends
+        if (isRider(ev.enemyType) && this.hasLoops()) { this.spawnRider(ev); break; }
         const s = this.pickSpawn();
         // newly arrived soldiers know roughly where the player is
         const e = g.enemies.spawn(ev.enemyType, s.x, s.z, ev.tier, {
@@ -179,6 +181,12 @@ export class Director {
    * alive count right): behind the foot soldiers when every rider slot is taken, as the very next spawn
    * when there is no hidden point right now (the boss's guard stays right behind him).
    */
+  /** Does the map being played have rider loops? */
+  hasLoops() {
+    const r = this.game.world && this.game.world.routes;
+    return !!(r && r.length);
+  }
+
   spawnRider(ev) {
     const g = this.game, c = this.core, p = g.player;
     if (!riderSlotFree(g.enemies.mountedCount(), c.wave, c.endless)) { deferSpawn(c, ev.enemyType, false); return null; }

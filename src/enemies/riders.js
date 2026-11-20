@@ -32,7 +32,6 @@ import { setRidePose } from './soldier.js';
 
 const rnd = Math.random;
 const NEAR = 30;                 // metres: foot soldiers further than this from a vehicle cannot be in its way
-const ARENA = 44.3;              // metres: the playable square, |x| and |z| (as squad.js clamps the bots)
 
 /** The vehicle as the rest of the game sees a bot: what the enemy health bar and the hits read. */
 class VehicleView {
@@ -60,13 +59,15 @@ export class Riders {
     this.game = game;
     this.enemies = enemies;
     this.vehicles = createVehicles(game);
-    this.routes = levelRoutes();
     this.mounts = [];            // {enemy, core, kind, V, ride, target, view, handle, voice, sees}
     this.wrecks = [];            // {ride, handle, kind, V, t}: wrecks, and vehicles their riders left standing
     this._blockers = [];
     this._pool = [];
     this._probe = {};
   }
+
+  /** The loops of the map being played (wave 15: every map has its own; read fresh, never kept). */
+  get routes() { const w = this.game.world; return (w && w.routes) || levelRoutes(); }
 
   /** Riders on their vehicles right now. */
   get mounted() { return this.mounts.length; }
@@ -165,6 +166,7 @@ export class Riders {
   _room(route, off, s0, s1, hw) {
     const cols = this.game.world.colliders, p = this._probe, side = off < 0 ? -1 : 1;
     const reach = Math.abs(off) + hw + RIDE.passMargin;
+    const ARENA = (this.game.world.half ?? 45) - 0.7;   // as squad.js clamps the bots
     for (let s = s0; ; s += 1) {
       const d = Math.min(s, s1);
       route.sample(d, p);

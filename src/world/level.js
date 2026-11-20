@@ -14,6 +14,9 @@ import { pbrMaterial } from '../render/materials.js';
 import { getScanParts } from '../render/models.js';
 import { lightOnly, writeNothing } from './pool.js';
 import { MAP_HALF } from '../config.js';
+import { routesFor } from '../core/routes.js';
+import { generateLayout } from '../core/mapgen.js';
+import { buildGenerated, placeLayout, MAP_SEEDS } from './mapbuild.js';
 
 const STOREY = 3.4;
 
@@ -144,12 +147,21 @@ function shadowCaster(geos, side) {
 }
 
 export class World {
-  constructor(game) {
+  /**
+   * opts (wave 15): {mapId, seed}. Without them this is the block of map 1, built by build() with its
+   * own seed; a generated map gets its id and a seed of its own and is built by buildGenerated().
+   */
+  constructor(game, opts = {}) {
     this.game = game;
     this.gr = game.gr;
     this.scene = game.gr.scene;
     this.tex = game.textures;
-    this.rng = makeRng(20261010);
+    this.mapId = opts.mapId || 'block';
+    this.half = MAP_HALF;
+    this.routes = routesFor(this.mapId);   // the rider loops of this map (core/routes)
+    this.layout = null;                    // the generated layout; null on the block
+    this.sharedMats = new Set();           // materials of the model pack baked in by scan(): not ours to dispose
+    this.rng = makeRng(opts.seed ?? 20261010);
     this.colliders = [];
     // 0.5 m cells so door openings (2 to 2.6 m wide) stay passable for bots after the agent margin
     this.nav = new NavGrid(MAP_HALF, 0.5, 0.4);
@@ -280,6 +292,7 @@ export class World {
       this.casterProxies = [];
     }
     this.root.add(chunks);
+    this.chunkGroup = chunks;    // dispose() forgets its swap in the occlusion pass
     for (const [side, geos] of casters) this.root.add(shadowCaster(geos, side));
     // The ambient occlusion pass draws depth and normals with one material for everything:
     // it gets the opaque level as a single mesh in place of all the chunks.
@@ -617,7 +630,10 @@ export class World {
     const parts = getScanParts(id);
     if (!parts) return false;
     const m = new THREE.Matrix4().makeRotationY(yaw).setPosition(cx, 0, cz);
-    for (const p of parts) this._addGeo(p.material, p.geometry.clone().applyMatrix4(m));
+    for (const p of parts) {
+      this.sharedMats.add(p.material);
+      this._addGeo(p.material, p.geometry.clone().applyMatrix4(m));
+    }
     return true;
   }
 
@@ -642,6 +658,12 @@ export class World {
   sandbags(cx, cz, len = 3, alongX = true) {
     const w = alongX ? len : 0.7, d = alongX ? 0.7 : len;
     this.addCollider(makeBox(cx, 0.5, cz, w, 1.0, d, { kind: 'sand' }));
+    this.sandbagBags(cx, cz, len, alongX);
+  }
+
+  /** The bags of a sandbag wall and its shadow block, without the collider (generated maps bring their own). */
+  sandbagBags(cx, cz, len = 3, alongX = true) {
+    const w = alongX ? len : 0.7, d = alongX ? 0.7 : len;
     // the shadow maps get a block a little inside the bags, so the bags' sunlit faces stay lit
     const proxy = new THREE.BoxGeometry(w - 0.16, 0.9, d - 0.16).toNonIndexed();
     proxy.translate(cx, 0.45, cz);
@@ -1145,6 +1167,7 @@ export class World {
 
   /** Dynamic props: crates, barrels, fires, pickups. Called after build(). */
   _places() {
+    if (this.layout) { placeLayout(this); return; }   // a generated map: from its layout (mapbuild.js)
     const props = this.game.props;
     // crates around cover and inside buildings
     const crates = [
@@ -1214,6 +1237,55 @@ export class World {
   }
 
   update(dt, time) {}
+
+  /**
+   * Throw the map away (wave 15): its group leaves the scene, and its geometry, its own materials
+   * (this.m, this.dm, the skyline, the shapes of the shadow and occlusion passes) and the textures it
+   * drew itself are freed; its swap in the occlusion pass goes. The shared texture sets
+   * (game.textures) and the materials of the model pack (scan) stay. Props, scatter, bots and
+   * effects are the caller's to clear first (game/maps.js).
+   */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.scene.remove(this.root);
+    if (this.chunkGroup) this.gr.removeAOSwap(this.chunkGroup);
+    const geos = new Set(), mats = new Set(), texs = new Set();
+    const addMat = (m) => { for (const one of Array.isArray(m) ? m : [m]) if (one && !this.sharedMats.has(one)) mats.add(one); };
+    this.root.traverse((o) => {
+      if (o.geometry) geos.add(o.geometry);
+      if (o.material) addMat(o.material);
+    });
+    for (const m of Object.values(this.m || {})) addMat(m);
+    for (const v of Object.values(this.dm || {})) addMat(v);
+    // the texture sets are shared by every map (and by the scatter); only what this map drew goes
+    const shared = new Set();
+    for (const set of Object.values(this.tex || {})) for (const k of ['map', 'normalMap', 'orm']) if (set[k]) shared.add(set[k]);
+    for (const m of mats) {
+      for (const k of ['map', 'emissiveMap', 'alphaMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
+        const t = m[k];
+        if (t && t.isTexture && !shared.has(t)) texs.add(t);
+      }
+    }
+    const csm = this.gr.csm;
+    for (const g of geos) g.dispose();
+    for (const m of mats) {
+      m.dispose();
+      if (csm && csm.shaders) csm.shaders.delete(m);   // CSM keeps every material it set up
+    }
+    for (const t of texs) t.dispose();
+    this.root.clear();
+    this.colliders.length = 0;
+    this.spawnPoints.length = 0;
+    this.cover = [];
+    this.coverIndex = null;
+    this.items = [];
+    this.batches.clear();
+    this.kindOf = new Map();
+    this.m = {};
+    this.dm = null;
+    this.skylineMesh = null;
+  }
 }
 
 function E() { return MAP_HALF - 1.5; }
@@ -1222,12 +1294,16 @@ function E() { return MAP_HALF - 1.5; }
  * Build the whole level: colliders, spawn points, cover points, player start,
  * pickup spots and the group with all static geometry. `game` supplies the
  * renderer, the texture pack, effects and props that the level places.
- * Returns the level: {colliders, spawnPoints, coverPoints, playerStart, pickupSpots, group, ...}.
+ * mapId (wave 15): 'block' is the hand-built city block of World.build(); any other id of core/maps is
+ * built from its generated layout (core/mapgen) by buildGenerated (mapbuild.js).
+ * Returns the level: {mapId, half, routes, layout, colliders, spawnPoints, coverPoints, playerStart, pickupSpots, group, ...}.
  */
-export function buildLevel(scene, game) {
-  const level = new World(game);
+export function buildLevel(scene, game, mapId = 'block') {
+  const id = mapId || 'block';
+  const level = id === 'block' ? new World(game) : new World(game, { mapId: id, seed: MAP_SEEDS[id] });
   game.world = level;                                  // props place themselves through the level
   if (!game.props) game.props = createPropsFor(game);
-  level.build();
+  if (id === 'block') level.build();
+  else buildGenerated(level, generateLayout(id));
   return level;
 }

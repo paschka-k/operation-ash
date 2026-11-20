@@ -24,6 +24,8 @@ import { createKeyScreen } from './ui/keys.js';
 import { createGpuInfo } from './ui/gpu.js';
 import { createWeather } from './world/weather.js';
 import { createPlayerShadow } from './player/shadow.js';
+import { switchMap, ensureMap, snapMap, mapLamps } from './game/maps.js';
+import { routesFor } from './core/routes.js';
 
 const STEP = 1 / PHYSICS_HZ;
 
@@ -92,10 +94,12 @@ class Game {
     this.grenades = createGrenades(this);
     this.shop = createShop(this);      // the shop screen, the inventory overlay, money and armour on the HUD
 
+    this.gr.setLampLights(mapLamps(this.world));   // wave 15: the lamps of the map for the lamp lights
     this.gr.prepareScene();
     this.hud.setLoading(0.95, t('loadAudio'));
     this.player.reset();
     this.weapons.reset();
+    snapMap(this);                     // wave 15: game.mapView, the picture from above for the map screens
 
     window.addEventListener('resize', () => this.gr.resize());
     document.addEventListener('visibilitychange', () => {
@@ -170,11 +174,21 @@ class Game {
   }
 
   // ---------------------------------------------------------- game states
+  /**
+   * A new game. It always starts on the block (wave 15): when another map is on screen it is rebuilt
+   * first, behind the loading screen, and the call returns that promise; otherwise it starts at once.
+   */
   startGame(opts = {}) {
+    if (this.switching) return this.switching.then(() => this.startGame(opts));
     this.audio.init();
     this.audio.resume();
     this.input.releaseAll(); // nothing pressed on a menu screen may leak into the game
     if (this.deathTimer) { clearTimeout(this.deathTimer); this.deathTimer = null; }
+    if (this.world.mapId !== 'block') return ensureMap(this, 'block').then(() => this._beginGame(opts));
+    this._beginGame(opts);
+  }
+
+  _beginGame(opts) {
     // The clock goes back to zero before anything reads it, so the core rules start from 0 too.
     this.time = 0;
     this.acc = 0;
@@ -236,14 +250,27 @@ class Game {
     this.enemies.riders.silence();
     this.hud.bossBar(null);
     this.shop.open();
+    // wave 15: the layout of the next wave's map is made now, not behind the loading screen
+    const next = this.director.core.shop && this.director.core.shop.map;
+    if (next) try { routesFor(next); } catch (e) { /* an unknown id is the switch's problem */ }
   }
 
-  /** "To battle": back into the game; the countdown to the next wave runs. */
+  /**
+   * "To battle": back into the game; the countdown to the next wave runs. Wave 15: the next wave has its
+   * own map (core.map, chosen in the shop or by the order); when it is not the one on screen it is built
+   * first behind the loading screen, and the call returns that promise.
+   */
   leaveShop() {
-    if (this.state !== 'shop') return;
+    if (this.state !== 'shop' || this.switching) return;
     this.director.leaveShop();
     this.shop.close();
     this.input.releaseAll();
+    const map = this.director.core.map || 'block';
+    if (this.world.mapId !== map) return ensureMap(this, map).then(() => this._toBattle());
+    this._toBattle();
+  }
+
+  _toBattle() {
     this.state = 'playing';
     this.hud.hideScreens();
     this.hud.showHud(true);
@@ -255,10 +282,17 @@ class Game {
 
   /** "Revive at wave N": the scene is cleared, the checkpoint of that wave comes back and the wave starts again. */
   revive() {
-    if (this.state !== 'dead' || !this.director.core.checkpoint) return;
+    if (this.state !== 'dead' || !this.director.core.checkpoint || this.switching) return;
     if (this.deathTimer) { clearTimeout(this.deathTimer); this.deathTimer = null; }
     this.audio.resume();
     this.input.releaseAll();
+    // wave 15: the wave of death is fought again on its own map (the checkpoint's)
+    const map = this.director.core.checkpoint.map || 'block';
+    if (this.world.mapId !== map) return ensureMap(this, map).then(() => this._revive());
+    this._revive();
+  }
+
+  _revive() {
     this.acc = 0;
     this.enemies.clear();            // burning bots go with them
     this.props.clear();
@@ -381,6 +415,16 @@ class Game {
     this.menuT += dt * 0.07;
     const a = this.menuT;
     const cam = this.gr.camera;
+    const v = this.world && this.world.menuView;
+    if (v) {
+      // wave 15: a generated map has its own view of itself; the camera sways slowly round its target
+      const k = Math.sin(a * 1.3) * 0.2, dx = v.x - v.tx, dz = v.z - v.tz;
+      cam.position.set(v.tx + dx * Math.cos(k) - dz * Math.sin(k), v.y + Math.sin(a * 1.7) * 1.2, v.tz + dx * Math.sin(k) + dz * Math.cos(k));
+      cam.rotation.order = 'YXZ';
+      cam.lookAt(v.tx, v.ty, v.tz);
+      this.gr.setFov(58);
+      return;
+    }
     cam.position.set(Math.cos(a) * 31, 9 + Math.sin(a * 1.7) * 2.2, Math.sin(a) * 31);
     cam.rotation.order = 'YXZ';
     cam.lookAt(0, 2.5, 0);
@@ -524,8 +568,12 @@ class Game {
       player: { x: +p.pos.x.toFixed(2), z: +p.pos.z.toFixed(2), health: Math.round(p.health), alive: p.alive },
       weapon: { id: w.cur.id, mag: w.cur.mag, reserve: w.cur.reserve },
       score: d.stats.score, kills: d.stats.kills, quality: this.settings.quality,
+      map: this.world.mapId,
     };
   }
+
+  /** Wave 15, for checks: rebuild the scene on another map (game/maps.js switchMap); the state stays 'loading'. */
+  switchMap(id) { return switchMap(this, id); }
 
   /** Dev only: saves the canvas through tools/shot-server.mjs. Needs ?shots in the page address. */
   async shot(name) {

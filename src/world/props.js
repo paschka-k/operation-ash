@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeBox, clamp } from '../core/collision.js';
 import { getModelGeometry } from '../render/models.js';
+import { pbrMaterial } from '../render/materials.js';
 import { InstancePool, placement } from './pool.js';
 import { explode } from '../core/combat.js';
 import { MAP_HALF } from '../config.js';
@@ -41,7 +42,8 @@ export class Props {
     const crateShape = new THREE.BoxGeometry(0.96, 0.96, 0.96).translate(0, 0.5, 0);
     const barrelShape = new THREE.CylinderGeometry(0.285, 0.285, 0.88, 12).translate(0, 0.45, 0);
     const crate = getModelGeometry('crate'), barrel = getModelGeometry('barrel');
-    const charred = this.world.m.metalChar;
+    // the husks' own material (the block's metalChar), not the map's: the props outlive every map
+    const charred = pbrMaterial(this.game.textures.metal, { color: 0x58514a });
     const husk = Array.isArray(barrel.material) ? barrel.material.map(() => charred) : charred;
     prepare(crate.material); prepare(barrel.material); prepare(charred);
     this.pools = {
@@ -101,13 +103,13 @@ export class Props {
     for (const p of Object.values(this.pickupPools)) this.root.add(p.item.group, p.beam.group);
   }
 
-  /** Is there room for a prop of radius r at x,z? Never on the riders' loops (wave 14). */
+  /** Is there room for a prop of radius r at x,z? Never on the riders' loops of the map (wave 14, 15). */
   canPlace(x, z, r) {
-    const lim = MAP_HALF - 1.5;
+    const lim = (this.world.half ?? MAP_HALF) - 1.5;
     if (Math.abs(x) > lim || Math.abs(z) > lim) return false;
     const ps = this.world.playerStart;
     if (Math.hypot(x - ps.x, z - ps.z) < 4) return false;
-    if (onRoute(x, z, r + ROUTE_KEEP_CLEAR)) return false;
+    if (onRoute(x, z, r + ROUTE_KEEP_CLEAR, this.world.routes || undefined)) return false;
     for (const c of this.world.colliders) {
       if (c.maxY < 0.1) continue;
       const cx = clamp(x, c.minX, c.maxX), cz = clamp(z, c.minZ, c.maxZ);
