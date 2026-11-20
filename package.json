@@ -1,6 +1,6 @@
 {
   "name": "ruined-block-fps",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "Browser first-person shooter: ruined city block, PBR, shadows, post-processing (Three.js)",
   "type": "module",
   "private": true,
@@ -15,7 +15,8 @@
     "test:tools": "node tests/tools/run.mjs",
     "textures": "node tools/fetch-textures.mjs",
     "models": "node tools/fetch-models.mjs",
-    "dashboard": "node tools/dashboard.mjs"
+    "dashboard": "node tools/dashboard.mjs",
+    "notes": "node tools/notes.mjs"
   },
   "license": "MIT",
   "dependencies": {

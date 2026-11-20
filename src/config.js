@@ -316,6 +316,12 @@ const STR = {
     mapTheme_night: 'Ночной центр: неон, фонари и дождь',
     mapTheme_desert: 'Глинобитные дома, пальмы и пыль',
     mapTheme_construction: 'Леса, арматура и недостроенные этажи',
+
+    // ---- wave 15: releases
+    newsButton: 'Что нового',
+    newsTitle: 'Что нового',
+    newsKnown: 'Известные недочёты',
+    newsEarlier: 'Прошлые версии',
   },
   en: {
     title: 'OPERATION ASH',
@@ -551,6 +557,12 @@ const STR = {
     mapTheme_night: 'Downtown at night: neon, street lamps and rain',
     mapTheme_desert: 'Adobe houses, palms and dust',
     mapTheme_construction: 'Scaffolds, rebar and unfinished storeys',
+
+    // ---- wave 15: releases
+    newsButton: "What's new",
+    newsTitle: "What's new",
+    newsKnown: 'Known issues',
+    newsEarlier: 'Earlier versions',
   },
 };
 

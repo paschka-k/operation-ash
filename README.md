@@ -104,6 +104,12 @@ Scans are not dropped in as they come. Each texture is fitted to the level (real
 
 The switch "Photoscanned textures and models" in the settings, or `?noscans` in the address, turns them off.
 
+## Versions and release notes
+
+Every deploy is a version. [CHANGELOG.md](CHANGELOG.md) lists what changed for developers (Added / Changed / Fixed / Removed), [RELEASE_NOTES.md](RELEASE_NOTES.md) says in plain words what is new for players and what is still rough. The main menu shows the version and has a "What's new" window with the same notes.
+
+Rule: every deploy is a new version and a new record on top of `src/core/releases.js` (minor number for a wave, patch number for fixes), the version in `package.json` is raised to match, and `npm run notes` rewrites both files. `npm test` fails when the version, the records and the two files disagree.
+
 ## Project
 
 ```

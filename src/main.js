@@ -26,6 +26,7 @@ import { createWeather } from './world/weather.js';
 import { createPlayerShadow } from './player/shadow.js';
 import { switchMap, ensureMap, snapMap, mapLamps } from './game/maps.js';
 import { routesFor } from './core/routes.js';
+import { createWhatsNew } from './ui/whatsnew.js';
 
 const STEP = 1 / PHYSICS_HZ;
 
@@ -113,6 +114,7 @@ class Game {
     this.pad = createGamepad(this);
     this.bigMap = createBigMap(this);
     this.keys = createKeyScreen(this);
+    this.whatsnew = createWhatsNew(this);   // wave 15: the version and the "What's new" window in the main menu
     this.hud.refreshBindings();
 
     // compile shaders now so the first frames of play do not stutter
@@ -165,6 +167,7 @@ class Game {
       // Without it (lock refused, test mode) the key itself has to do it.
       if (this.state === 'playing') this.pause();
       else if (this.hud.screen === 'keys') this.keys.back();
+      else if (this.hud.screen === 'whatsnew') this.whatsnew.back();
       else if (this.state === 'menu' && (this.hud.screen === 'settings' || this.hud.screen === 'controls')) this.hud.showScreen('menu');
       else if (this.state === 'paused' && performance.now() - (this.pausedAt || 0) > 300) {
         if (this.hud.screen === 'pause') this.resume();

@@ -372,3 +372,18 @@ body.pad-active canvas#game { cursor: none; }
 @media (max-width: 900px) {
   .map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---- wave 15: releases (the version in the main menu and the What's new window) */
+.menu .version { margin-top: 4px; font-size: 12px; letter-spacing: 0.12em; color: var(--muted); }
+.panel.news { width: min(760px, 94vw); max-height: calc(100vh - 64px); box-sizing: border-box; padding: 26px 32px; }
+.news-body { overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 8px; padding-right: 8px; scrollbar-width: thin; scrollbar-color: rgba(232, 137, 43, 0.6) transparent; }
+.news-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 18px; letter-spacing: 0.04em; }
+.news-head b { color: var(--accent-2); }
+.news-head em, .news-old em { font-style: normal; color: var(--muted); font-size: 13px; }
+.news-notes { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.4; letter-spacing: 0.02em; }
+.news-notes.known { color: var(--muted); }
+.news-notes code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: rgba(255, 255, 255, 0.08); padding: 0 4px; }
+.news-sub { margin-top: 8px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-2); }
+.news-old { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.news-old li { display: grid; grid-template-columns: 64px 96px 1fr; gap: 10px; align-items: baseline; }
+.news-old b { color: var(--ink); }
