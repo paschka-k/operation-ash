@@ -1,10 +1,11 @@
 // HUD and menu screens, built as DOM over the canvas.
 
 import * as THREE from 'three';
-import { t, setLang, getLang, QUALITY_ORDER, MAP_HALF } from '../config.js';
+import { t, setLang, getLang, QUALITY_ORDER } from '../config.js';
 import { WEAPON_ORDER } from '../core/rules.js';
 import { riderMarkerAlpha } from '../core/riderlogic.js';
 import { keyName, bindingText, padHint } from './keys.js';
+import { mapHalfOf, mapImageOf } from './bigmap.js';
 
 // Screens are full-window panels; one is shown at a time. Other modules add theirs with addScreen().
 const SCREENS = ['loading', 'menu', 'pause', 'settings', 'controls', 'dead', 'victory'];
@@ -599,9 +600,21 @@ export class HUD {
       const sf = -dx * sy - dz * cy;
       return [C + sx * k, C - sf * k];
     };
+    // the picture from above (wave 15), turned with the view and moved so the player is at the centre:
+    // the same turn as toScreen, as one transform. Without it, the building outlines as before.
+    const image = mapImageOf(g);
+    if (image) {
+      const half = mapHalfOf(g);
+      ctx.save();
+      ctx.translate(C, C); ctx.rotate(p.yaw); ctx.scale(k, k); ctx.translate(-p.pos.x, -p.pos.z);
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(image, -half, -half, 2 * half, 2 * half);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(8,10,12,0.2)'; ctx.fillRect(0, 0, S, S); // a little dimming so the dots read
+    }
     // building outlines
     ctx.strokeStyle = 'rgba(190,200,210,0.4)'; ctx.fillStyle = 'rgba(120,130,140,0.2)'; ctx.lineWidth = 1.5;
-    for (const f of g.world.footprints) {
+    for (const f of (image ? [] : g.world.footprints)) {
       const pts = [[f.x0, f.z0], [f.x1, f.z0], [f.x1, f.z1], [f.x0, f.z1]].map(([x, z]) => toScreen(x, z));
       ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
@@ -640,13 +653,13 @@ export class HUD {
     if (!map || !map.isOpen) return;
     const cv = map.canvas, ctx = map.ctx, L = cv.clientWidth;
     if (!(L > 0)) return;
-    const m = 14, k = (L - 2 * m) / (2 * MAP_HALF);
+    const half = mapHalfOf(g), m = 14, k = (L - 2 * m) / (2 * half);
     const mode = g.settings.radarEnemies;
     for (const e of g.enemies.list) {
       if (!e.alive || !(e.pos.mounted || e.T.boss)) continue;
       const a = riderMarkerAlpha(mode, g.time - e.lastFired, !!e.pos.mounted);
       if (a <= 0) continue;
-      enemyMark(ctx, e, m + (e.pos.x + MAP_HALF) * k, m + (e.pos.z + MAP_HALF) * k, a, 1.1);
+      enemyMark(ctx, e, m + (e.pos.x + half) * k, m + (e.pos.z + half) * k, a, 1.1);
       this.bigMapRiders++;
     }
   }

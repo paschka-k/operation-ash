@@ -347,3 +347,28 @@ body.pad-active canvas#game { cursor: none; }
 .mainkeys .ctl-pad { color: var(--muted); min-width: 0; text-align: right; }
 .mainkeys .ctl-key { text-align: right; }
 .mainkeys .btn { margin-top: 4px; padding-top: 8px; padding-bottom: 8px; }
+
+/* ---- wave 15: map-ui (the big map's legend, the banner's map line, the map cards of the shop) */
+.bigmap-legend { flex-wrap: wrap; gap: 6px 20px; }
+.bigmap-legend i.rider { border-radius: 0; transform: rotate(45deg) scale(0.85); background: #ff3c32; box-shadow: 0 0 0 1px rgba(255, 225, 200, 0.8); }
+.bigmap-legend i.boss { background: transparent; box-shadow: 0 0 0 2px #ffc440; }
+.banner-s { text-wrap: balance; max-width: min(100%, 560px); margin-left: auto; margin-right: auto; }
+
+.shop-maps { display: block; }
+.shop-maps.line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; padding: 8px 12px; background: rgba(255, 255, 255, 0.04); border-left: 2px solid var(--accent); }
+.sm-label { font-size: 17px; letter-spacing: 0.06em; color: var(--ink); }
+.sm-theme { font-size: 13px; color: var(--muted); letter-spacing: 0.02em; }
+.sm-hint { margin-left: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: none; font-size: 13px; }
+.map-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.shop .btn.map-card { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px; text-align: left; letter-spacing: 0.04em; text-transform: none; font-size: 14px; }
+.map-thumb { display: block; width: 100%; max-width: 100px; aspect-ratio: 1 / 1; align-self: center; border: 1px solid rgba(255, 255, 255, 0.14); }
+.mc-name { font-size: 15px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.2; }
+.mc-name i { font-style: normal; color: var(--accent-2); margin-right: 6px; font-weight: 400; }
+.mc-theme { font-size: 12px; font-weight: 400; color: var(--muted); line-height: 1.25; min-height: 2.5em; }
+.mc-tags { display: flex; gap: 6px; min-height: 16px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.mc-tags em { font-style: normal; color: var(--muted); }
+.mc-tags b { color: #8fd88a; }
+.shop .btn.map-card.selected { border-color: var(--accent-2); background: rgba(232, 137, 43, 0.16); box-shadow: inset 0 0 0 1px var(--accent-2); }
+@media (max-width: 900px) {
+  .map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

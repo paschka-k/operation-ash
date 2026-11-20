@@ -44,7 +44,7 @@ export class Director {
     this.bossIntro = null;
     this.bannerUntil = 0;
     this.game.hud.bossBar(null);
-    this.game.hud.banner(this.game.t('wave') + ' 1', '', 2.5);
+    this.game.hud.banner(this.game.t('wave') + ' 1', this.mapName(), 2.5);
   }
 
   continueEndless() {
@@ -73,7 +73,7 @@ export class Director {
     const g = this.game;
     this.bossIntro = null;
     g.hud.bossBar(null);           // the wave starts again: its boss comes back with full health
-    g.hud.banner(g.t('wave') + ' ' + cp.wave, g.t('revived', { n: this.core.deaths + 1 }), 2.6);
+    g.hud.banner(g.t('wave') + ' ' + cp.wave, [this.mapName(), g.t('revived', { n: this.core.deaths + 1 })].filter(Boolean).join(' · '), 2.6);
     return true;
   }
 
@@ -117,7 +117,7 @@ export class Director {
     switch (ev.type) {
       case 'waveStart': {
         const news = this.riderNews(ev.wave, ev.endless);
-        const sub = [ev.endless ? g.t('endless') : '', news].filter(Boolean).join(' · ');
+        const sub = [ev.endless ? g.t('endless') : '', this.mapName(), news].filter(Boolean).join(' · ');
         const secs = news ? 3.6 : 2.6;
         g.hud.banner(g.t('wave') + ' ' + ev.wave, sub, secs);
         this.bannerUntil = this.now + secs * 1000;
@@ -162,6 +162,11 @@ export class Director {
   }
 
   // ---- wave 14: riders and bosses
+  /** The name of the map this wave is fought on (the second line of the wave banner). */
+  mapName() {
+    return this.game.t('map_' + (this.core.map || 'block'));
+  }
+
   /**
    * The line under the wave banner that names the kinds of rider this game meets for the first time.
    * It follows the wave's real roster: bikers first ride in on wave 5 as the gang leader's guard, two waves

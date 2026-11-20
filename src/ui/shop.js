@@ -9,6 +9,8 @@ import { t, getLang } from '../config.js';
 import { shopOffers, buyWeapon, buyUpgrade, buyGrenade, buyArmor, refillAmmo } from '../core/shop.js';
 import { specOf, weaponLevel, WEAPON_ORDER, WEAPON_SPECS } from '../core/weapons.js';
 import { GRENADE, UPGRADE, ARMOR } from '../core/rules.js';
+import { chooseMap } from '../core/maps.js';
+import { fillThumbs } from './mapthumb.js';
 
 // After a purchase its row ignores clicks this long (interface timing, not a game rule).
 const PURCHASE_GUARD_MS = 400;
@@ -46,6 +48,7 @@ export class Shop {
           <div class="shop-wallet"><span data-t="money"></span><b id="shop-money"></b></div>
         </div>
         <div class="shop-earn" id="shop-earn"></div>
+        <div class="shop-maps" id="shop-maps"></div>
         <div class="shop-cols">
           <section class="shop-col">
             <div class="shop-h" data-t="shopWeapons"></div>
@@ -125,6 +128,11 @@ export class Shop {
       case 'grenade': r = buyGrenade(core, a); done = tf('bought', { x: t('grenades') }); break;
       case 'armor': r = buyArmor(core); done = tf('bought', { x: t('armor') }); break;
       case 'refill': r = refillAmmo(core, a); done = t('refilled'); break;
+      case 'map': {
+        // choosing a map is no purchase: no sound of money, no guard, only the card and the battle button change
+        if (chooseMap(core, id).ok) { this.message(''); this.render(); }
+        return;
+      }
       default: return;
     }
     if (r.ok) {
@@ -209,7 +217,8 @@ export class Shop {
       </div>`;
 
     this.q('shop-inv').innerHTML = this.carryHtml(false);
-    this.q('btn-shop-go').textContent = tf('toBattle', { n: core.wave + 1 });
+    this.renderMaps(o);
+    this.q('btn-shop-go').textContent = tf('toBattleMap', { n: core.wave + 1, name: t('map_' + o.maps.next) });
 
     if (focusKey) {
       const el = this.root.querySelector(`[data-key="${focusKey}"]`);
@@ -223,6 +232,33 @@ export class Shop {
       }
       next.focus();
     }
+  }
+
+  /**
+   * The map of the next wave (wave 15). Before the choice opens: one line naming the map that comes in order.
+   * From the shop after wave 5 on: a card for every map (its scheme, name, theme), the chosen one marked.
+   */
+  renderMaps(o) {
+    const box = this.q('shop-maps'), mp = o.maps;
+    const wave = this.game.director.core.wave + 1;
+    if (!mp.open) {
+      box.className = 'shop-maps line';
+      box.innerHTML = `<span class="sm-label">${esc(tf('mapNext', { name: t('map_' + mp.next) }))}</span>`
+        + `<span class="sm-theme">${esc(t('mapTheme_' + mp.next))}</span>`;
+      return;
+    }
+    box.className = 'shop-maps open';
+    box.innerHTML = `<div class="shop-h">${esc(t('mapChooseH'))} <span class="sm-hint">${esc(tf('mapChooseHint', { n: wave }))}</span></div>`
+      + `<div class="map-grid" role="group" aria-label="${esc(t('mapChooseH'))}">`
+      + mp.choices.map((c) => `
+        <button class="btn map-card${c.selected ? ' selected' : ''}" data-act="map" data-id="${c.id}" data-key="map:${c.id}" aria-pressed="${c.selected}">
+          <canvas class="map-thumb" data-thumb="${c.id}" data-css="120" width="120" height="120"></canvas>
+          <span class="mc-name"><i>${c.order}</i>${esc(t(c.nameKey))}</span>
+          <span class="mc-theme">${esc(t(c.themeKey))}</span>
+          <span class="mc-tags">${c.default ? `<em>${esc(t('mapDefault'))}</em>` : ''}${c.selected ? `<b>${esc(t('mapSelected'))}</b>` : ''}</span>
+        </button>`).join('')
+      + '</div>';
+    fillThumbs(box);
   }
 
   // ------------------------------------------------------------- inventory
